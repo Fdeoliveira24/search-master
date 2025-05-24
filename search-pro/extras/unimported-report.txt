@@ -1,0 +1,133 @@
+
+       summary               unimported v1.31.1 (node)
+──────────────────────────────────────────────────────────────────────────────────────────
+       entry file          : script.js
+
+       unresolved imports  : 0
+       unused dependencies : 0
+       unimported files    : 116
+
+
+─────┬────────────────────────────────────────────────────────────────────────────────────
+     │ 116 unimported files
+─────┼────────────────────────────────────────────────────────────────────────────────────
+   1 │ backup-test-files/search_v1.js
+   2 │ backup-test-files/search_v2.js
+   3 │ backup-test-files/search_v3.js
+   4 │ backup-test-files/search_v4.1.js
+   5 │ backup-test-files/tour-debug-v7.js
+   6 │ lib/basis/basis_transcoder.js
+   7 │ lib/draco/draco_decoder.js
+   8 │ lib/draco/draco_wasm_wrapper.js
+   9 │ lib/Hls.js
+  10 │ lib/pdfjs/build/pdf.js
+  11 │ lib/pdfjs/build/pdf.sandbox.js
+  12 │ lib/pdfjs/build/pdf.worker.js
+  13 │ lib/pdfjs/web/viewer.js
+  14 │ lib/tdvgs.js
+  15 │ lib/tdvgsworker0.js
+  16 │ lib/tdvgsworker1.js
+  17 │ lib/tdvplayer.js
+  18 │ lib/WebVRPolyfill.js
+  19 │ lib/webxr-polyfill.js
+  20 │ reports/plato-report/assets/scripts/bundles/codemirror.js
+  21 │ reports/plato-report/assets/scripts/bundles/core-bundle.js
+  22 │ reports/plato-report/assets/scripts/codemirror.markpopovertext.js
+  23 │ reports/plato-report/assets/scripts/plato-display.js
+  24 │ reports/plato-report/assets/scripts/plato-file.js
+  25 │ reports/plato-report/assets/scripts/plato-overview.js
+  26 │ reports/plato-report/assets/scripts/plato-sortable-file-list.js
+  27 │ reports/plato-report/assets/scripts/vendor/bootstrap-popover.js
+  28 │ reports/plato-report/assets/scripts/vendor/bootstrap-tooltip.js
+  29 │ reports/plato-report/assets/scripts/vendor/codemirror/codemirror.js
+  30 │ reports/plato-report/assets/scripts/vendor/codemirror/javascript.js
+  31 │ reports/plato-report/assets/scripts/vendor/codemirror/util/closetag.js
+  32 │ reports/plato-report/assets/scripts/vendor/codemirror/util/colorize.js
+  33 │ reports/plato-report/assets/scripts/vendor/codemirror/util/continuecomment.js
+  34 │ reports/plato-report/assets/scripts/vendor/codemirror/util/continuelist.js
+  35 │ reports/plato-report/assets/scripts/vendor/codemirror/util/dialog.js
+  36 │ reports/plato-report/assets/scripts/vendor/codemirror/util/foldcode.js
+  37 │ reports/plato-report/assets/scripts/vendor/codemirror/util/formatting.js
+  38 │ reports/plato-report/assets/scripts/vendor/codemirror/util/javascript-hint.js
+  39 │ reports/plato-report/assets/scripts/vendor/codemirror/util/loadmode.js
+  40 │ reports/plato-report/assets/scripts/vendor/codemirror/util/match-highlighter.js
+  41 │ reports/plato-report/assets/scripts/vendor/codemirror/util/matchbrackets.js
+  42 │ reports/plato-report/assets/scripts/vendor/codemirror/util/multiplex.js
+  43 │ reports/plato-report/assets/scripts/vendor/codemirror/util/overlay.js
+  44 │ reports/plato-report/assets/scripts/vendor/codemirror/util/pig-hint.js
+  45 │ reports/plato-report/assets/scripts/vendor/codemirror/util/runmode-standalone.js
+  46 │ reports/plato-report/assets/scripts/vendor/codemirror/util/runmode.js
+  47 │ reports/plato-report/assets/scripts/vendor/codemirror/util/search.js
+  48 │ reports/plato-report/assets/scripts/vendor/codemirror/util/searchcursor.js
+  49 │ reports/plato-report/assets/scripts/vendor/codemirror/util/simple-hint.js
+  50 │ reports/plato-report/assets/scripts/vendor/codemirror/util/xml-hint.js
+  51 │ reports/plato-report/assets/scripts/vendor/jquery-1.8.3.min.js
+  52 │ reports/plato-report/assets/scripts/vendor/jquery.fittext.js
+  53 │ reports/plato-report/assets/scripts/vendor/lodash.min.js
+  54 │ reports/plato-report/assets/scripts/vendor/morris.min.js
+  55 │ reports/plato-report/assets/scripts/vendor/raphael-min.js
+  56 │ reports/plato-report/report.history.js
+  57 │ reports/plato-report/report.js
+  58 │ script_general.js
+  59 │ script_mobile.js
+  60 │ search-01-working-bck.js
+  61 │ search-pro/extras/Button.js
+  62 │ search-pro/extras/jscpd-report/html/js/prism.js
+  63 │ search-pro/extras/plato-report/assets/scripts/bundles/codemirror.js
+  64 │ search-pro/extras/plato-report/assets/scripts/bundles/core-bundle.js
+  65 │ search-pro/extras/plato-report/assets/scripts/codemirror.markpopovertext.js
+  66 │ search-pro/extras/plato-report/assets/scripts/plato-display.js
+  67 │ search-pro/extras/plato-report/assets/scripts/plato-file.js
+  68 │ search-pro/extras/plato-report/assets/scripts/plato-overview.js
+  69 │ search-pro/extras/plato-report/assets/scripts/plato-sortable-file-list.js
+  70 │ search-pro/extras/plato-report/assets/scripts/vendor/bootstrap-popover.js
+  71 │ search-pro/extras/plato-report/assets/scripts/vendor/bootstrap-tooltip.js
+  72 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/codemirror.js
+  73 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/javascript.js
+  74 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/closetag.js
+  75 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/colorize.js
+  76 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/continuecomment.js
+  77 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/continuelist.js
+  78 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/dialog.js
+  79 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/foldcode.js
+  80 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/formatting.js
+  81 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/javascript-hint.js
+  82 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/loadmode.js
+  83 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/match-highlighter.js
+  84 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/matchbrackets.js
+  85 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/multiplex.js
+  86 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/overlay.js
+  87 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/pig-hint.js
+  88 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/runmode-standalone.js
+  89 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/runmode.js
+  90 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/search.js
+  91 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/searchcursor.js
+  92 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/simple-hint.js
+  93 │ search-pro/extras/plato-report/assets/scripts/vendor/codemirror/util/xml-hint.js
+  94 │ search-pro/extras/plato-report/assets/scripts/vendor/jquery-1.8.3.min.js
+  95 │ search-pro/extras/plato-report/assets/scripts/vendor/jquery.fittext.js
+  96 │ search-pro/extras/plato-report/assets/scripts/vendor/lodash.min.js
+  97 │ search-pro/extras/plato-report/assets/scripts/vendor/morris.min.js
+  98 │ search-pro/extras/plato-report/assets/scripts/vendor/raphael-min.js
+  99 │ search-pro/extras/plato-report/files/search_pro_modules_related_content_js/report.history.js
+ 100 │ search-pro/extras/plato-report/files/search_pro_modules_related_content_js/report.js
+ 101 │ search-pro/extras/plato-report/report.history.js
+ 102 │ search-pro/extras/plato-report/report.js
+ 103 │ search-pro/fuse.js
+ 104 │ search-pro/fuse.js/dist/fuse.basic.js
+ 105 │ search-pro/fuse.js/dist/fuse.basic.min.js
+ 106 │ search-pro/fuse.js/dist/fuse.js
+ 107 │ search-pro/fuse.js/dist/fuse.min.js
+ 108 │ search-pro/js/debug-core.js
+ 109 │ search-pro/modules/data-manager.js
+ 110 │ search-pro/modules/dom-handler.js
+ 111 │ search-pro/modules/related-content.js
+ 112 │ search-pro/modules/search-engine.js
+ 113 │ search-pro/modules/ui-manager.js
+ 114 │ search-pro/modules/utils.js
+ 115 │ search-pro/search-01.js
+ 116 │ tdvplayersw.js
+─────┴────────────────────────────────────────────────────────────────────────────────────
+
+
+       Inspect the results and run npx unimported -u to update ignore lists

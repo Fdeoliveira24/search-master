@@ -1,0 +1,304 @@
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "radius". Using default value: 10
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "color". Using default value: #000000
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "useBusinessData". Using default value: undefined
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:59
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "useGoogleSheetData". Using default value: undefined
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:59
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "googleSheetUrl". Using default value: undefined
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:59
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "fetchMode". Using default value: undefined
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:59
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "useAsDataSource". Using default value: undefined
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:59
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "csvOptions". Using default value: undefined
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:59
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "progressiveLoading". Using default value: undefined
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:59
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "authentication". Using default value: undefined
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:59
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "minSearchChars". Using default value: 2
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+tdvremote.js?v=1747847889850:1 Invalid or missing config property "showTagsInResults". Using default value: false
+(anonymous) @ tdvremote.js?v=1747847889850:1
+(anonymous) @ search-01.js:61
+validateConfig @ search-01.js:53
+(anonymous) @ search-01.js:159
+search-01.js:2415 Uncaught TypeError: Logger.info is not a function
+    at ensureSearchFunctionsLoaded (search-01.js:2415:12)
+    at search-01.js:2426:1
+ensureSearchFunctionsLoaded @ search-01.js:2415
+(anonymous) @ search-01.js:2426
+tdvremote.js?v=1747847889850:1 ✅ Loaded module: utils (1/6)
+tdvremote.js?v=1747847889850:1 ✅ Loaded module: dom-handler (2/6)
+tdvremote.js?v=1747847889850:1 ✅ Loaded module: data-manager (3/6)
+tdvremote.js?v=1747847889850:1 ✅ Loaded module: search-engine (4/6)
+tdvremote.js?v=1747847889850:1 ✅ Loaded module: ui-manager (5/6)
+tdvremote.js?v=1747847889850:1 ✅ Loaded module: related-content (6/6)
+tdvremote.js?v=1747847889850:1 ✅ All modules loaded and verified, initializing search...
+tdvremote.js?v=1747847889850:1 PXL 360 Player v:2166
+tdvplayer.js?v=1747847889850:159 Unrecognized feature: 'vr'.
+attr @ tdvplayer.js?v=1747847889850:159
+$ @ tdvplayer.js?v=1747847889850:94
+attr @ tdvplayer.js?v=1747847889850:158
+(anonymous) @ tdvplayer.js?v=1747847889850:3957
+(anonymous) @ tdvplayer.js?v=1747847889850:3700
+(anonymous) @ tdvplayer.js?v=1747847889850:3700
+(anonymous) @ tdvplayer.js?v=1747847889850:3701
+m @ tdvplayer.js?v=1747847889850:511
+Promise.then
+XB @ tdvplayer.js?v=1747847889850:511
+(anonymous) @ tdvplayer.js?v=1747847889850:3701
+(anonymous) @ tdvplayer.js?v=1747847889850:3699
+(anonymous) @ tdvplayer.js?v=1747847889850:599
+(anonymous) @ tdvplayer.js?v=1747847889850:598
+(anonymous) @ tdvplayer.js?v=1747847889850:582
+(anonymous) @ tdvplayer.js?v=1747847889850:675
+(anonymous) @ tdvplayer.js?v=1747847889850:3703
+(anonymous) @ tdvplayer.js?v=1747847889850:3717
+(anonymous) @ tdvplayer.js?v=1747847889850:491
+(anonymous) @ tdvplayer.js?v=1747847889850:487
+(anonymous) @ tdvplayer.js?v=1747847889850:487
+(anonymous) @ tdvplayer.js?v=1747847889850:4011
+(anonymous) @ tdvplayer.js?v=1747847889850:4008
+(anonymous) @ tdvplayer.js?v=1747847889850:4019
+(anonymous) @ tdvplayer.js?v=1747847889850:256
+setTimeout
+(anonymous) @ tdvplayer.js?v=1747847889850:256
+c @ tdvplayer.js?v=1747847889850:241
+P @ tdvplayer.js?v=1747847889850:255
+(anonymous) @ tdvplayer.js?v=1747847889850:4019
+(anonymous) @ tdvplayer.js?v=1747847889850:4019
+(anonymous) @ tdvplayer.js?v=1747847889850:3659
+(anonymous) @ tdvplayer.js?v=1747847889850:516
+(anonymous) @ tdvplayer.js?v=1747847889850:515
+(anonymous) @ tdvplayer.js?v=1747847889850:3660
+(anonymous) @ tdvplayer.js?v=1747847889850:3659
+e @ tdvplayer.js?v=1747847889850:4019
+(anonymous) @ tdvplayer.js?v=1747847889850:211
+(anonymous) @ script_general.js:230
+(anonymous) @ script_general.js:232
+tdvplayer.js?v=1747847889850:159 Allow attribute will take precedence over 'allowfullscreen'.
+attr @ tdvplayer.js?v=1747847889850:159
+$ @ tdvplayer.js?v=1747847889850:94
+attr @ tdvplayer.js?v=1747847889850:158
+(anonymous) @ tdvplayer.js?v=1747847889850:3957
+(anonymous) @ tdvplayer.js?v=1747847889850:3700
+(anonymous) @ tdvplayer.js?v=1747847889850:3700
+(anonymous) @ tdvplayer.js?v=1747847889850:3701
+m @ tdvplayer.js?v=1747847889850:511
+Promise.then
+XB @ tdvplayer.js?v=1747847889850:511
+(anonymous) @ tdvplayer.js?v=1747847889850:3701
+(anonymous) @ tdvplayer.js?v=1747847889850:3699
+(anonymous) @ tdvplayer.js?v=1747847889850:599
+(anonymous) @ tdvplayer.js?v=1747847889850:598
+(anonymous) @ tdvplayer.js?v=1747847889850:582
+(anonymous) @ tdvplayer.js?v=1747847889850:675
+(anonymous) @ tdvplayer.js?v=1747847889850:3703
+(anonymous) @ tdvplayer.js?v=1747847889850:3717
+(anonymous) @ tdvplayer.js?v=1747847889850:491
+(anonymous) @ tdvplayer.js?v=1747847889850:487
+(anonymous) @ tdvplayer.js?v=1747847889850:487
+(anonymous) @ tdvplayer.js?v=1747847889850:4011
+(anonymous) @ tdvplayer.js?v=1747847889850:4008
+(anonymous) @ tdvplayer.js?v=1747847889850:4019
+(anonymous) @ tdvplayer.js?v=1747847889850:256
+setTimeout
+(anonymous) @ tdvplayer.js?v=1747847889850:256
+c @ tdvplayer.js?v=1747847889850:241
+P @ tdvplayer.js?v=1747847889850:255
+(anonymous) @ tdvplayer.js?v=1747847889850:4019
+(anonymous) @ tdvplayer.js?v=1747847889850:4019
+(anonymous) @ tdvplayer.js?v=1747847889850:3659
+(anonymous) @ tdvplayer.js?v=1747847889850:516
+(anonymous) @ tdvplayer.js?v=1747847889850:515
+(anonymous) @ tdvplayer.js?v=1747847889850:3660
+(anonymous) @ tdvplayer.js?v=1747847889850:3659
+e @ tdvplayer.js?v=1747847889850:4019
+(anonymous) @ tdvplayer.js?v=1747847889850:211
+(anonymous) @ script_general.js:230
+(anonymous) @ script_general.js:232
+tdvremote.js?v=1747847889850:1 Local Fuse.js loaded successfully
+tdvremote.js?v=1747847889850:1 ✅ Tour object found, initializing search...
+tdvremote.js?v=1747847889850:1 🔍 DEBUG - Checking requirements:
+tdvremote.js?v=1747847889850:1   - Container found: true
+tdvremote.js?v=1747847889850:1   - Tour object: true
+tdvremote.js?v=1747847889850:1   - Tour mainPlayList: false
+tdvremote.js?v=1747847889850:1   - Tour properties: (16) ['_handlers', 'player', '_settings', '_devicesUrl', '_playersPlayingTmp', '_isInitialized', '_isPaused', '_isRemoteSession', '_orientation', '_lockedOrientation', '_device', '_currentScriptUrl', 'locManager', '_onHashChange', '_onKeyUp', '_onBeforeUnload']
+tdvremote.js?v=1747847889850:1 [Search] Search initialization failed: missing requirements
+(anonymous) @ tdvremote.js?v=1747847889850:1
+error @ utils.js:26
+_initializeSearch @ search-01.js:1152
+initializeSearch @ search-01.js:2133
+initialize @ search-01.js:325
+await in initialize
+(anonymous) @ search-01.js:391
+script
+(anonymous) @ search-01.js:358
+loadModules @ search-01.js:357
+(anonymous) @ search-01.js:406
+(anonymous) @ search-01.js:407
+tdvremote.js?v=1747847889850:1 Exception handling event enableCookies ga is not defined ReferenceError: ga is not defined
+    at enableCookies (http://127.0.0.1:5500/script.js?v=1747847889850:117:4)
+    at a.Gz (http://127.0.0.1:5500/lib/tdvplayer.js?v=1747847889850:235:425)
+    at http://127.0.0.1:5500/lib/tdvplayer.js?v=1747847889850:235:321
+business.google.com/:1 
+            
+            
+           Failed to load resource: the server responded with a status of 403 ()
+tdvremote.js?v=1747847889850:1 🔍 DEBUG - Checking requirements:
+tdvremote.js?v=1747847889850:1   - Container found: true
+tdvremote.js?v=1747847889850:1   - Tour object: true
+tdvremote.js?v=1747847889850:1   - Tour mainPlayList: true
+tdvremote.js?v=1747847889850:1   - Tour properties: (567) ['WH', 'o', 'Hra', 'kx', 'OA', 'Era', '$ya', 'Qc', 'qq', 'WI', 'mc', 'xa', 'afa', 'nQ', 'lda', 'te', 'v9', 'mta', 'Rza', 'mb', 'ta', 'Kw', 'Lw', 'sa', 'wa', 'Ub', 'kA', 'bta', 'cm', 'bm', 'nP', 'mP', 'Mb', 'bi', 'Jq', 'SI', 'Yb', 'Pwa', 'Xd', 'wD', 'AX', 'hua', 'wca', 'BRa', 'Rc', 'Io', 'yY', 'Aw', 'QO', 'Zl', '$d', 'yq', 'XN', 'vqa', 'wqa', 'Rb', 'dc', 'Ng', 'jg', 'be', 'yd', 'em', 'fm', 'Dba', 'vba', 'qqa', 'r9', 's9', 't9', 'u9', 'UA', 'mda', 'fA', '$X', 'Zt', 'A1', 'If', 'Qga', 'Bx', 'gd', 'oza', 'Id', 'Sd', 'YUa', 'DPa', 'OQ', 'W9', '$b', 'bX', 'iua', 'CD', 'LN', 'yra', 'b9', 'J1', 'I1', 'GA', 'Oaa', 'rj', 'ug', …]
+tdvremote.js?v=1747847889850:1   - MainPlayList type: object
+tdvremote.js?v=1747847889850:1   - MainPlayList get function: function
+tdvremote.js?v=1747847889850:1 === DEBUGGING SEARCH INDEX BUILDER ===
+tdvremote.js?v=1747847889850:1 Total items found: 7
+tdvremote.js?v=1747847889850:1 
+--- Processing item 0 ---
+tdvremote.js?v=1747847889850:1 Item object: h {Qc: {…}, qq: {…}, C: 'playing'}
+tdvremote.js?v=1747847889850:1 Media object: h {Qc: {…}, qq: {…}, lK: Array(3), KY: Array(3), wga: ƒ, …}
+tdvremote.js?v=1747847889850:1 Media data: {label: 'Room-1'}
+tdvremote.js?v=1747847889850:1 Label: Room-1 Subtitle: 
+tdvremote.js?v=1747847889850:1 Should include this item: true
+tdvremote.js?v=1747847889850:1 Display label: Room-1
+tdvremote.js?v=1747847889850:1 ✅ Adding panorama to index: {type: 'Panorama', index: 0, id: 'panorama_1F4F3504_1693_C368_4155_CD0C98E5CBB4', label: 'Room-1', originalLabel: 'Room-1', …}
+tdvremote.js?v=1747847889850:1 Found overlays: 3
+tdvremote.js?v=1747847889850:1 Processing overlay: GoToRoom-2 Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 Processing overlay: Web Type detected: Webframe
+tdvremote.js?v=1747847889850:1 Processing overlay: Info-to_Video-360 Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 
+--- Processing item 1 ---
+tdvremote.js?v=1747847889850:1 Item object: h {Qc: {…}, qq: {…}, C: 'stopped'}
+tdvremote.js?v=1747847889850:1 Media object: h {Qc: {…}, qq: {…}, lK: Array(5), KY: Array(5), wga: ƒ}
+tdvremote.js?v=1747847889850:1 Media data: {tags: Array(1)}
+tdvremote.js?v=1747847889850:1 Label:  Subtitle: 
+tdvremote.js?v=1747847889850:1 Should include this item: true
+tdvremote.js?v=1747847889850:1 Display label: MyCoolTag_01
+tdvremote.js?v=1747847889850:1 ✅ Adding panorama to index: {type: 'Panorama', index: 1, id: 'panorama_FD134B42_CA7D_AC2A_41E0_59846BC1318E', label: 'MyCoolTag_01', originalLabel: '', …}
+tdvremote.js?v=1747847889850:1 Found overlays: 5
+tdvremote.js?v=1747847889850:1 Processing overlay: GoToRoom-1 Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 Processing overlay: GoToRoom-4 Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 Processing overlay: GoToRoom-3 Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 Processing overlay: MyCoolPolygon01 Type detected: Polygon
+tdvremote.js?v=1747847889850:1 Processing overlay: MyProjectedImage Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 
+--- Processing item 2 ---
+tdvremote.js?v=1747847889850:1 Item object: h {Qc: {…}, qq: {…}, C: 'stopped'}
+tdvremote.js?v=1747847889850:1 Media object: h {Qc: {…}, qq: {…}, lK: Array(2), KY: Array(2), wga: ƒ}
+tdvremote.js?v=1747847889850:1 Media data: {label: 'Room-3', tags: Array(1), subtitle: 'Facility-3'}
+tdvremote.js?v=1747847889850:1 Label: Room-3 Subtitle: Facility-3
+tdvremote.js?v=1747847889850:1 Should include this item: true
+tdvremote.js?v=1747847889850:1 Display label: Room-3
+tdvremote.js?v=1747847889850:1 ✅ Adding panorama to index: {type: 'Panorama', index: 2, id: 'panorama_F15D7F82_CA7D_A42A_41C6_927DF9112683', label: 'Room-3', originalLabel: 'Room-3', …}
+tdvremote.js?v=1747847889850:1 Found overlays: 2
+tdvremote.js?v=1747847889850:1 Processing overlay: GoToRoom-2 Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 Processing overlay: MyCoolPolygon03 Type detected: Polygon
+tdvremote.js?v=1747847889850:1 
+--- Processing item 3 ---
+tdvremote.js?v=1747847889850:1 Item object: h {Qc: {…}, qq: {…}, C: 'stopped'}
+tdvremote.js?v=1747847889850:1 Media object: h {Qc: {…}, qq: {…}, lK: Array(5), KY: Array(5), wga: ƒ}
+tdvremote.js?v=1747847889850:1 Media data: {tags: Array(2), subtitle: 'Facility-4'}
+tdvremote.js?v=1747847889850:1 Label:  Subtitle: Facility-4
+tdvremote.js?v=1747847889850:1 Should include this item: true
+tdvremote.js?v=1747847889850:1 Display label: Facility-4
+tdvremote.js?v=1747847889850:1 ✅ Adding panorama to index: {type: 'Panorama', index: 3, id: 'panorama_F151638B_CA7D_BC3A_4175_209ED67A3320', label: 'Facility-4', originalLabel: '', …}
+tdvremote.js?v=1747847889850:1 Found overlays: 5
+tdvremote.js?v=1747847889850:1 Processing overlay: Image Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 Processing overlay: Info-Icon-Hotspot Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 Processing overlay: MyCoolPlaceholderVideo Type detected: Video
+tdvremote.js?v=1747847889850:1 Processing overlay: MyHotspotText Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 Processing overlay: MyCoolPolygon02 Type detected: Hotspot
+tdvremote.js?v=1747847889850:1 
+--- Processing item 4 ---
+tdvremote.js?v=1747847889850:1 Item object: h {Qc: {…}, qq: {…}, C: 'stopped'}
+tdvremote.js?v=1747847889850:1 Media object: h {Qc: {…}, qq: {…}, wga: ƒ}
+tdvremote.js?v=1747847889850:1 Media data: {keepModel3DLoadedWithoutLocation: true, label: 'Model-01', showOnlyHotspotsLineSight: true, showOnlyHotspotsLineSightInPanoramas: true}
+tdvremote.js?v=1747847889850:1 Label: Model-01 Subtitle: 
+tdvremote.js?v=1747847889850:1 Should include this item: true
+tdvremote.js?v=1747847889850:1 Display label: Model-01
+tdvremote.js?v=1747847889850:1 ✅ Adding panorama to index: {type: 'Panorama', index: 4, id: 'model_F0D1EB78_CA94_ACE6_41D0_A952164CC22E', label: 'Model-01', originalLabel: 'Model-01', …}
+tdvremote.js?v=1747847889850:1 Found overlays: 0
+tdvremote.js?v=1747847889850:1 
+--- Processing item 5 ---
+tdvremote.js?v=1747847889850:1 Item object: h {Qc: {…}, qq: {…}, C: 'stopped'}
+tdvremote.js?v=1747847889850:1 Media object: h {Qc: {…}, qq: {…}, lK: Array(0), KY: Array(0), wga: ƒ, …}
+tdvremote.js?v=1747847889850:1 Media data: {label: 'Technimark-360-video-sample'}
+tdvremote.js?v=1747847889850:1 Label: Technimark-360-video-sample Subtitle: 
+tdvremote.js?v=1747847889850:1 Should include this item: true
+tdvremote.js?v=1747847889850:1 Display label: Technimark-360-video-sample
+tdvremote.js?v=1747847889850:1 ✅ Adding panorama to index: {type: 'Panorama', index: 5, id: 'media_9EAA4B28_D090_1E5E_41D1_B73F7FE1363B', label: 'Technimark-360-video-sample', originalLabel: 'Technimark-360-video-sample', …}
+tdvremote.js?v=1747847889850:1 Found overlays: 0
+tdvremote.js?v=1747847889850:1 
+--- Processing item 6 ---
+tdvremote.js?v=1747847889850:1 Item object: h {Qc: {…}, qq: {…}, C: 'stopped'}
+tdvremote.js?v=1747847889850:1 Media object: h {Qc: {…}, qq: {…}, lK: Array(1), KY: Array(1), wga: ƒ}
+tdvremote.js?v=1747847889850:1 Media data: {}
+tdvremote.js?v=1747847889850:1 Label:  Subtitle: 
+tdvremote.js?v=1747847889850:1 Should include this item: true
+tdvremote.js?v=1747847889850:1 Display label: [Unnamed Item]
+tdvremote.js?v=1747847889850:1 ✅ Adding panorama to index: {type: 'Panorama', index: 6, id: 'panorama_F289242C_D090_0A56_41E5_7B2C79291A3C', label: '[Unnamed Item]', originalLabel: '', …}
+tdvremote.js?v=1747847889850:1 Found overlays: 1
+tdvremote.js?v=1747847889850:1 Processing overlay: PolygonOn360Video Type detected: Polygon
+tdvremote.js?v=1747847889850:1 === INDEX BUILDING COMPLETE ===
+tdvremote.js?v=1747847889850:1 Total items added to fuseData: 23
+tdvremote.js?v=1747847889850:1 FuseData sample: (3) [{…}, {…}, {…}]
+tdvremote.js?v=1747847889850:1 🔍 SEARCH DEBUG - Start
+tdvremote.js?v=1747847889850:1   - Search term: *
+tdvremote.js?v=1747847889850:1   - Fuse available: true
+tdvremote.js?v=1747847889850:1   - Fuse _docs length: 23
+tdvremote.js?v=1747847889850:1   - Results container: true
+tdvremote.js?v=1747847889850:1   - Results list: true
+index.htm:1 The resource http://127.0.0.1:5500/script_general.js?v=1747847889850 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
