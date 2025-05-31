@@ -10,144 +10,8 @@ window.SearchProModules.DataManager = (function () {
   const Logger = window.searchProDebugLogger || console;
   const CrossWindowChannel = Utils.CrossWindowChannel || {};
 
-  // [2.0] SEARCH HISTORY MANAGEMENT
-  const _searchHistory = {
-    maxItems: 5,
-    storageKey: "tourSearchHistory",
-
-    // [2.1] Save search term to history
-    save(term) {
-      if (!term || typeof term !== "string" || term.trim() === "") {
-        return false;
-      }
-
-      try {
-        // [2.1.1] Check if localStorage is available
-        if (!this._isStorageAvailable()) {
-          return false;
-        }
-
-        let history = this.get();
-        const termLower = term.toLowerCase().trim();
-        const index = history.findIndex((h) => h.toLowerCase() === termLower);
-
-        if (index > -1) {
-          history.splice(index, 1);
-        }
-
-        // [2.1.2] Add the term to the beginning of the history
-        history.unshift(term.trim());
-
-        // [2.1.3] Remove duplicates
-        history = [...new Set(history)];
-
-        // [2.1.4] Limit the size of history
-        if (history.length > this.maxItems) {
-          history.length = this.maxItems;
-        }
-
-        // [2.1.5] Check storage size before saving
-        const serialized = JSON.stringify(history);
-        if (serialized.length > 5000) {
-          // Trim history if too large
-          history.length = Math.max(1, history.length - 2);
-        }
-
-        try {
-          localStorage.setItem(this.storageKey, JSON.stringify(history));
-
-          // [2.1.6] Broadcast history change to other windows/tabs
-          CrossWindowChannel.send("historyUpdate", {
-            action: "save",
-            history,
-          });
-
-          return true;
-        } catch (e) {
-          // [2.1.7] Handle quota exceeded error
-          if (e.name === "QuotaExceededError") {
-            // Try removing the oldest item and save again
-            if (history.length > 1) {
-              history.pop();
-              localStorage.setItem(this.storageKey, JSON.stringify(history));
-
-              // Broadcast history change to other windows/tabs
-              CrossWindowChannel.send("historyUpdate", {
-                action: "save",
-                history,
-              });
-
-              return true;
-            }
-          }
-          Logger.warn("Failed to save search history:", e);
-          return false;
-        }
-      } catch (error) {
-        Logger.warn("Error in search history management:", error);
-        return false;
-      }
-    },
-
-    // [2.2] Retrieve search history
-    get() {
-      try {
-        // [2.2.1] Check storage availability
-        if (!this._isStorageAvailable()) {
-          return [];
-        }
-
-        const stored = localStorage.getItem(this.storageKey);
-        if (!stored) return [];
-
-        const parsed = JSON.parse(stored);
-
-        // [2.2.2] Validate parsed data is an array
-        if (!Array.isArray(parsed)) {
-          Logger.warn("Invalid search history format, resetting");
-          this.clear();
-          return [];
-        }
-
-        // [2.2.3] Filter out any invalid entries
-        return parsed.filter(
-          (item) => typeof item === "string" && item.trim() !== "",
-        );
-      } catch (error) {
-        Logger.warn("Failed to retrieve search history:", error);
-        return [];
-      }
-    },
-
-    // [2.3] Clear search history
-    clear() {
-      try {
-        if (this._isStorageAvailable()) {
-          localStorage.removeItem(this.storageKey);
-
-          // [2.3.1] Broadcast clear action to other windows/tabs
-          CrossWindowChannel.send("historyUpdate", { action: "clear" });
-        }
-        return true;
-      } catch (error) {
-        Logger.warn("Failed to clear search history:", error);
-        return false;
-      }
-    },
-
-    // [2.4] Check if localStorage is available
-    _isStorageAvailable() {
-      try {
-        const test = "__storage_test__";
-        localStorage.setItem(test, test);
-        localStorage.removeItem(test);
-        return true;
-      } catch {
-        // Intentionally ignored: localStorage may not be available in all environments
-        return false;
-      }
-    },
-  };
+  // [2.0] SEARCH HISTORY MANAGEMENT - Removed
+  // Search history functionality has been removed
 
   // [3.0] BUSINESS DATA MANAGEMENT
   let _businessData = [];
@@ -452,12 +316,6 @@ window.SearchProModules.DataManager = (function () {
 
           _googleSheetsData = processedData;
 
-          Logger.info(`Loaded Google Sheets rows:`, data);
-          if (!Array.isArray(data) || data.length === 0) {
-            Logger.warn("Google Sheets data is empty or failed to load.");
-            alert("No data found in the Google Sheet. Please check the Sheet URL and ensure data is present.");
-          }
-
           const missingIds = processedData.filter((row) => !row.id).length;
           const missingTags = processedData.filter((row) => !row.tag).length;
 
@@ -491,7 +349,7 @@ window.SearchProModules.DataManager = (function () {
 
   // [8.0] PUBLIC API
   return {
-    searchHistory: _searchHistory,
+    // searchHistory has been removed
     loadBusinessData: _loadBusinessData,
     loadGoogleSheetsData: _loadGoogleSheetsData,
     getBusinessData: _getBusinessData,

@@ -2,6 +2,60 @@
  * search-engine.js - Search indexing and processing for Search Pro
  * Handles element detection, indexing, and filtering logic
  */
+
+// New centralized mode management
+const DataSourceModes = {
+  TOUR: "tour",
+  BUSINESS: "business",
+  GOOGLE_SHEETS: "googleSheets",
+  CUSTOM_THUMBNAILS: "customThumbnails",
+
+  // Get active mode from config
+  getActiveMode: function (config) {
+    // Check modes in priority order
+    if (config?.businessData?.useAsDataSource === true) {
+      return this.BUSINESS;
+    }
+    if (config?.googleSheets?.useAsDataSource === true) {
+      return this.GOOGLE_SHEETS;
+    }
+    if (config?.customThumbnails?.useAsDataSource === true) {
+      return this.CUSTOM_THUMBNAILS;
+    }
+    return this.TOUR; // Default
+  },
+
+  // Set mode and ensure mutual exclusivity
+  setMode: function (config, mode) {
+    // Reset all modes
+    if (config.businessData) config.businessData.useAsDataSource = false;
+    if (config.googleSheets) config.googleSheets.useAsDataSource = false;
+    if (config.customThumbnails)
+      config.customThumbnails.useAsDataSource = false;
+
+    // Set the requested mode
+    switch (mode) {
+      case this.BUSINESS:
+        if (!config.businessData) config.businessData = {};
+        config.businessData.useAsDataSource = true;
+        config.businessData.useBusinessData = true;
+        break;
+      case this.GOOGLE_SHEETS:
+        if (!config.googleSheets) config.googleSheets = {};
+        config.googleSheets.useAsDataSource = true;
+        config.googleSheets.useGoogleSheetData = true;
+        break;
+      case this.CUSTOM_THUMBNAILS:
+        if (!config.customThumbnails) config.customThumbnails = {};
+        config.customThumbnails.useAsDataSource = true;
+        break;
+      // Tour mode (default) - all useAsDataSource are false
+    }
+
+    return config;
+  },
+};
+
 window.SearchProModules = window.SearchProModules || {};
 
 window.SearchProModules.SearchEngine = (function () {
@@ -20,7 +74,6 @@ window.SearchProModules.SearchEngine = (function () {
         ImagePanoramaOverlay: "Image",
         TextPanoramaOverlay: "Text",
         HotspotPanoramaOverlay: "Hotspot",
-        HotspotPanoramaOverlayTextImage: "Hotspot",
       };
       // [2.2] Lookup map for label patterns
       const labelPatternMap = [
@@ -576,7 +629,8 @@ window.SearchProModules.SearchEngine = (function () {
     parentIndex,
     parentLabel,
     config,
-    sheetsLookup = new Map(),
+    sheetsLookup,
+    sourceMode = "tour",
   ) {
     if (!Array.isArray(overlays) || overlays.length === 0) {
       return;
@@ -647,6 +701,22 @@ window.SearchProModules.SearchEngine = (function () {
           }
         }
 
+        // Check for Google Sheets enhancement for overlays (only in tour mode)
+        let sheetsMatch = null;
+        if (
+          sourceMode === "tour" &&
+          elementId &&
+          sheetsLookup &&
+          sheetsLookup.has(elementId)
+        ) {
+          sheetsMatch = sheetsLookup.get(elementId);
+          Logger.debug(
+            "✨ Found Google Sheets match for overlay:",
+            elementId,
+            sheetsMatch,
+          );
+        }
+
         // Create a fallback label if needed
         let displayLabel = overlayLabel;
         if (!displayLabel) {
@@ -654,23 +724,44 @@ window.SearchProModules.SearchEngine = (function () {
         }
 
         // Debug: log overlay processing and type detection
-        console.log(
-          "Processing overlay:",
-          overlayLabel,
-          "Type detected:",
-          elementType,
+        Logger.debug(
+          `Processing overlay: ${overlayLabel}, Type detected: ${elementType}, Source mode: ${sourceMode}`,
         );
 
-        // Add to search data
-        fuseData.push({
+        // Create overlay item with source mode awareness
+        const overlayItem = {
           type: elementType,
-          label: displayLabel,
+          label: sheetsMatch?.name || displayLabel,
+          originalLabel: overlayLabel,
           tags: elementTags,
           parentIndex: parentIndex,
           parentLabel: parentLabel,
           id: elementId,
           boost: 0.8,
-        });
+          dataSource:
+            sourceMode === "tour"
+              ? sheetsMatch
+                ? "enhanced"
+                : "tour"
+              : sourceMode,
+          sourceMode: sourceMode,
+        };
+
+        // Enhance overlay with Google Sheets data if available (only in tour mode)
+        if (sourceMode === "tour" && sheetsMatch) {
+          overlayItem.imageUrl = sheetsMatch.imageUrl;
+          overlayItem.description = sheetsMatch.description;
+          overlayItem.sheetsData = sheetsMatch;
+          overlayItem.enhanced = true;
+          overlayItem.enhancedBy = "googleSheets";
+          Logger.debug(
+            "✨ Enhanced overlay with Google Sheets data:",
+            overlayItem.label,
+          );
+        }
+
+        // Add to search data
+        fuseData.push(overlayItem);
       } catch (overlayError) {
         Logger.warn(
           `Error processing overlay at index ${overlayIndex}:`,
@@ -682,194 +773,425 @@ window.SearchProModules.SearchEngine = (function () {
 
   // [6.0] SEARCH INDEX PREPARATION
   /**
-   * Prepares and returns a Fuse.js search index for the tour panoramas and overlays.
-   * @param {object} tour - The tour object containing the main playlist.
-   * @param {object} config - The search configuration object.
-   * @param {Array} businessData - Business data array (optional).
-   * @param {Array} googleSheetsData - Google Sheets data array (optional).
-   * @returns {Fuse} The constructed Fuse.js instance for searching.
+   *  The _prepareSearchIndex and helper functions
+   * Implements mutually exclusive data sources with priority order:
+   * 1. Tour Only (default when no ONLY modes enabled)
+   * 2. Business Data Only (businessData.useAsDataSource = true)
+   * 3. Custom Thumbnails Only (customThumbnails.useAsDataSource = true)
+   * 4. Google Sheets Only (googleSheets.useAsDataSource = true)
+   */
+
+  /**
+   * Main search index preparation function with mutually exclusive data sources
    */
   function _prepareSearchIndex(tour, config, businessData, googleSheetsData) {
     try {
-      // [6.1] Defensive: check for mainPlayList and items
-      let items = null;
-      if (tour.mainPlayList && typeof tour.mainPlayList.get === "function") {
-        items = tour.mainPlayList.get("items");
+      // =============================================================================
+      // STEP 1: DETECT ACTIVE DATA SOURCE MODE USING PRIORITY ORDER
+      // =============================================================================
+
+      // Check for ONLY modes in priority order
+      const isBusinessDataOnly = config.businessData?.useAsDataSource === true; // Business data only mode
+      const isCustomThumbnailsOnly =
+        config.customThumbnails?.useAsDataSource === true; // Custom thumbnails only mode
+      const isGoogleSheetsOnly = config.googleSheets?.useAsDataSource === true; // Google Sheets only mode
+
+      // Determine active mode based on priority
+      let activeMode = "tour"; // Default
+      if (isBusinessDataOnly) activeMode = "business";
+      else if (isCustomThumbnailsOnly) activeMode = "customThumbnails";
+      else if (isGoogleSheetsOnly) activeMode = "googleSheets";
+
+      // Log configuration state for debugging
+      Logger.info("=== SEARCH INDEX DATA SOURCE ANALYSIS ===");
+      Logger.info(`🔍 Checking data source flags:`);
+      Logger.info(`  Business Data Only: ${isBusinessDataOnly}`);
+      Logger.info(`  Custom Thumbnails Only: ${isCustomThumbnailsOnly}`);
+      Logger.info(`  Google Sheets Only: ${isGoogleSheetsOnly}`);
+      Logger.info(`🎯 ACTIVE MODE: ${activeMode.toUpperCase()}`);
+
+      // Warn if multiple ONLY modes are configured (configuration error)
+      const enabledOnlyModes = [
+        isBusinessDataOnly && "Business Data",
+        isCustomThumbnailsOnly && "Custom Thumbnails",
+        isGoogleSheetsOnly && "Google Sheets",
+      ].filter(Boolean);
+
+      if (enabledOnlyModes.length > 1) {
+        Logger.error(
+          `❌ CONFIGURATION ERROR: Multiple ONLY modes detected: [${enabledOnlyModes.join(", ")}]`,
+        );
+        Logger.error(
+          `🔧 Priority order will be enforced: Business > Custom Thumbnails > Google Sheets`,
+        );
       }
 
-      if (!items || !Array.isArray(items) || items.length === 0) {
-        Logger.warn("Search Pro: Tour playlist items not available or empty");
-        return null;
+      // =============================================================================
+      // STEP 2: BUILD INDEX BASED ON ACTIVE MODE
+      // =============================================================================
+
+      switch (activeMode) {
+        case "tour":
+          return _buildTourOnlyIndex(tour, config);
+
+        case "business":
+          return _buildBusinessDataOnlyIndex(businessData, config);
+
+        case "customThumbnails":
+          return _buildCustomThumbnailsOnlyIndex(config);
+
+        case "googleSheets":
+          return _buildGoogleSheetsOnlyIndex(googleSheetsData, config);
+
+        default:
+          Logger.error(`❌ CRITICAL ERROR: Unknown active mode: ${activeMode}`);
+          return new Fuse([], { keys: ["label"], includeScore: true });
       }
-
-      console.log("=== DEBUGGING SEARCH INDEX BUILDER ===");
-      console.log("Total items found:", items.length);
-
-      const fuseData = [];
-
-      // [6.2] Process each panorama in the tour
-      items.forEach((item, index) => {
-        console.log(`\n--- Processing item ${index} ---`);
-        console.log("Item object:", item);
-
-        try {
-          // Get media data safely
-          let media = null;
-          if (item && typeof item.get === "function") {
-            media = item.get("media");
-            console.log("Media object:", media);
-          } else {
-            console.log("Item does not have get() method or is null");
-          }
-
-          if (!media) {
-            console.log(`❌ No media found for item at index ${index}`);
-            return;
-          }
-
-          // Get panorama metadata
-          const data = _safeGetData(media);
-          console.log("Media data:", data);
-
-          const label = data?.label?.trim() || "";
-          const subtitle = data?.subtitle?.trim() || "";
-          console.log("Label:", label, "Subtitle:", subtitle);
-
-          // Apply content filtering
-          const shouldInclude = _shouldIncludePanorama(
-            label,
-            subtitle,
-            data?.tags,
-            index,
-            config?.filter?.panoramaLabels?.mode || "none",
-            config?.filter?.panoramaLabels?.allowedValues || [],
-            config?.filter?.panoramaLabels?.blacklistedValues || [],
-            config?.filter?.allowedMediaIndexes || [],
-            config?.filter?.blacklistedMediaIndexes || [],
-            config,
-          );
-
-          console.log("Should include this item:", shouldInclude);
-
-          if (!shouldInclude) {
-            console.log(
-              `❌ Item ${index} filtered out by _shouldIncludePanorama`,
-            );
-            return;
-          }
-
-          // Get display label
-          const displayLabel = _getDisplayLabel(
-            label,
-            subtitle,
-            data?.tags,
-            config,
-          );
-          console.log("Display label:", displayLabel);
-
-          // [6.2.1] Get media ID for Google Sheets matching - try multiple sources
-          let mediaId = null;
-          try {
-            mediaId = media.get("id") || data?.label || displayLabel;
-          } catch (e) {
-            mediaId = data?.label || displayLabel;
-          }
-
-          // Log normalized matching diagnostic
-          const normalize = (str) => (typeof str === 'string' ? str.trim().toLowerCase() : '');
-          googleSheetsData.forEach((row) => {
-            const normalizedRowId = normalize(row.id);
-            const labelMatch = normalize(label) === normalizedRowId;
-            const idMatch = normalize(mediaId) === normalizedRowId;
-            if (labelMatch || idMatch) {
-              Logger.info(`Google Sheets row "${row.id}" matched panorama: "${label}" or ID: "${mediaId}"`);
-            } else {
-              Logger.warn(`No match for Google Sheets row "${row.id}" (Panorama label: "${label}", ID: "${mediaId}")`);
-            }
-          });
-
-          // [6.2.2] Check for Google Sheets enhancement - try multiple matching strategies
-          let sheetsMatch = null;
-
-          // Match by label first
-          if (label) {
-            sheetsMatch = googleSheetsData.find((row) => row.id === label);
-          }
-
-          // Fallback to ID match if label match fails
-          if (!sheetsMatch && mediaId) {
-            sheetsMatch = googleSheetsData.find((row) => row.id === mediaId);
-          }
-
-          // Add panorama to search index
-          const panoramaItem = {
-            type: "Panorama",
-            index,
-            id: mediaId,
-            label: sheetsMatch?.name || displayLabel,
-            originalLabel: label,
-            subtitle: subtitle,
-            tags: Array.isArray(data?.tags) ? data.tags : [],
-            item,
-            boost: label ? 1.5 : 1.0,
-          };
-
-          // [6.2.3] Enhance with Google Sheets data if available
-          if (sheetsMatch) {
-            panoramaItem.imageUrl = sheetsMatch.imageUrl;
-            panoramaItem.description = sheetsMatch.description;
-            panoramaItem.sheetsData = sheetsMatch;
-            panoramaItem.enhanced = true;
-          }
-
-          console.log("✅ Adding panorama to index:", panoramaItem);
-          fuseData.push(panoramaItem);
-
-          // Process overlays for this panorama
-          const overlays = _getOverlays(media, tour, item);
-          console.log("Found overlays:", overlays.length);
-          _processOverlays(
-            overlays,
-            fuseData,
-            index,
-            displayLabel,
-            config,
-            new Map(googleSheetsData.map((row) => [row.id, row])),
-          );
-        } catch (error) {
-          console.error(`❌ Error processing item at index ${index}:`, error);
-        }
-      });
-
-      console.log("=== INDEX BUILDING COMPLETE ===");
-      console.log("Total items added to fuseData:", fuseData.length);
-      console.log("FuseData sample:", fuseData.slice(0, 3));
-
-      // [6.3] Create Fuse.js search index
-      const fuse = new Fuse(fuseData, {
-        keys: [
-          { name: "label", weight: 1 },
-          { name: "description", weight: 0.9 },
-          { name: "subtitle", weight: 0.8 },
-          { name: "tags", weight: 0.6 },
-          { name: "parentLabel", weight: 0.3 },
-        ],
-        includeScore: true,
-        threshold: 0.4,
-        distance: 40,
-        minMatchCharLength: 1,
-        useExtendedSearch: true,
-        ignoreLocation: true,
-      });
-
-      Logger.info(
-        `✅ Successfully indexed ${fuseData.length} items for search`,
-      );
-      return fuse;
     } catch (error) {
-      Logger.error("Error preparing Fuse index:", error);
+      Logger.error("❌ CRITICAL ERROR in _prepareSearchIndex:", error);
+      // Return empty but functional Fuse index on error
       return new Fuse([], { keys: ["label"], includeScore: true });
     }
+  }
+
+  // =============================================================================
+  // MODE-SPECIFIC INDEX BUILDERS
+  // =============================================================================
+
+  /**
+   * PRIORITY 1: Tour Only Mode - Default when no ONLY modes are enabled
+   * Builds search index exclusively from tour data (panoramas + overlays)
+   */
+  function _buildTourOnlyIndex(tour, config) {
+    Logger.info(
+      "🏛️ [TOUR ONLY] Building search index from tour data exclusively",
+    );
+    Logger.info(
+      "🚫 Ignoring all external data sources (Business, Custom Thumbnails, Google Sheets)",
+    );
+
+    // Validate tour data availability
+    let items = null;
+    if (tour?.mainPlayList && typeof tour.mainPlayList.get === "function") {
+      items = tour.mainPlayList.get("items");
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      Logger.warn(
+        "⚠️ Tour playlist items not available or empty - returning empty index",
+      );
+      return new Fuse([], { keys: ["label"], includeScore: true });
+    }
+
+    const fuseData = [];
+    let panoramaCount = 0;
+    let overlayCount = 0;
+
+    // Process all tour items (panoramas and their overlays)
+    items.forEach((item, index) => {
+      let media =
+        item && typeof item.get === "function" ? item.get("media") : null;
+      if (!media) return;
+
+      const data = _safeGetData(media);
+      const label = data?.label?.trim() || "";
+      const subtitle = data?.subtitle?.trim() || "";
+      const displayLabel = _getDisplayLabel(
+        label,
+        subtitle,
+        data?.tags,
+        config,
+      );
+      const mediaId =
+        data?.label ||
+        displayLabel ||
+        (media.get && media.get("id")) ||
+        `panorama_${index}`;
+
+      // Apply panorama filtering
+      if (
+        !_shouldIncludePanorama(
+          label,
+          subtitle,
+          data?.tags,
+          index,
+          config.filter?.mode || "none",
+          config.filter?.allowedValues || [],
+          config.filter?.blacklistedValues || [],
+          config.filter?.allowedMediaIndexes || [],
+          config.filter?.blacklistedMediaIndexes || [],
+          config,
+        )
+      ) {
+        return;
+      }
+
+      // Create panorama item
+      const panoramaItem = {
+        type: "Panorama",
+        index,
+        id: mediaId,
+        label: displayLabel,
+        originalLabel: label,
+        subtitle: subtitle,
+        tags: Array.isArray(data?.tags) ? data.tags : [],
+        item,
+        media,
+        boost: label ? 1.5 : 1.0,
+        dataSource: "tour",
+        sourceMode: "tourOnly",
+      };
+      fuseData.push(panoramaItem);
+      panoramaCount++;
+
+      // Process overlays for this panorama
+      const overlays = _getOverlays(media, tour, item);
+      const overlaysBefore = fuseData.length;
+      _processOverlays(
+        overlays,
+        fuseData,
+        index,
+        displayLabel,
+        config,
+        null,
+        "tourOnly",
+      );
+      overlayCount += fuseData.length - overlaysBefore - 1; // -1 for the panorama we just added
+    });
+
+    const fuse = new Fuse(fuseData, _getFuseOptions());
+    Logger.info(
+      `✅ [TOUR ONLY] Successfully indexed ${fuseData.length} total items:`,
+    );
+    Logger.info(`   📍 ${panoramaCount} panoramas`);
+    Logger.info(`   🎯 ${overlayCount} overlays`);
+    return fuse;
+  }
+
+  /**
+   * PRIORITY 2: Business Data Only Mode
+   * Builds search index exclusively from business data, ignoring tour completely
+   */
+  function _buildBusinessDataOnlyIndex(businessData, config) {
+    Logger.info(
+      "🏢 [BUSINESS DATA ONLY] Building search index from business data exclusively",
+    );
+    Logger.info(
+      "🚫 Ignoring tour data, custom thumbnails, and Google Sheets data",
+    );
+
+    if (!Array.isArray(businessData) || businessData.length === 0) {
+      Logger.warn(
+        "⚠️ Business data not available or empty - returning empty index",
+      );
+      return new Fuse([], { keys: ["label"], includeScore: true });
+    }
+
+    const fuseData = businessData
+      .map((business, index) => {
+        // Normalize business data to standard search item format
+        const businessItem = {
+          id:
+            business.id ||
+            business.name ||
+            business.businessName ||
+            `business_${index}`,
+          label:
+            business.name ||
+            business.businessName ||
+            business.title ||
+            "Unnamed Business",
+          subtitle:
+            business.description || business.address || business.summary || "",
+          type: "Business",
+          imageUrl: business.imageUrl || business.logo || business.image || "",
+          parentLabel:
+            business.category || business.location || business.area || "",
+          tags: _normalizeTagsArray(business.tags || business.categories || []),
+          // Preserve original business data
+          businessData: business,
+          // Search optimization
+          boost: business.name ? 1.2 : 1.0,
+          // Source tracking
+          dataSource: "business",
+          sourceMode: "businessOnly",
+        };
+
+        // Apply business data filtering if configured
+        if (
+          config.filter?.elementTypes?.mode === "blacklist" &&
+          config.filter.elementTypes.blacklistedTypes?.includes("Business")
+        ) {
+          return null; // Will be filtered out
+        }
+
+        return businessItem;
+      })
+      .filter(Boolean); // Remove null entries
+
+    const fuse = new Fuse(fuseData, _getFuseOptions());
+    Logger.info(
+      `✅ [BUSINESS DATA ONLY] Successfully indexed ${fuseData.length} business items`,
+    );
+    return fuse;
+  }
+
+  /**
+   * PRIORITY 3: Custom Thumbnails Only Mode
+   * Builds search index exclusively from custom thumbnails data (Future implementation)
+   */
+  function _buildCustomThumbnailsOnlyIndex(config) {
+    Logger.info(
+      "🖼️ [CUSTOM THUMBNAILS ONLY] Building search index from custom thumbnails data exclusively",
+    );
+    Logger.info("🚫 Ignoring tour data, business data, and Google Sheets data");
+
+    // TODO: Implement custom thumbnails data source
+    // This would load from a custom thumbnails JSON file or API
+    const fuseData = [];
+
+    // Placeholder for future implementation:
+    // const customThumbnailsData = await loadCustomThumbnailsData(config);
+    // fuseData = customThumbnailsData.map(thumbnail => ({
+    //   id: thumbnail.id,
+    //   label: thumbnail.title || thumbnail.name,
+    //   subtitle: thumbnail.description,
+    //   type: thumbnail.type || "CustomThumbnail",
+    //   imageUrl: thumbnail.url,
+    //   tags: thumbnail.tags || [],
+    //   thumbnailData: thumbnail,
+    //   dataSource: "customThumbnails",
+    //   sourceMode: "customThumbnailsOnly"
+    // }));
+
+    const fuse = new Fuse(fuseData, _getFuseOptions());
+    Logger.warn(
+      `⚠️ [CUSTOM THUMBNAILS ONLY] Feature not yet implemented - indexed 0 items`,
+    );
+    Logger.info(`ℹ️ This mode will be available in a future version`);
+    return fuse;
+  }
+
+  /**
+   * PRIORITY 4: Google Sheets Only Mode
+   * Builds search index exclusively from Google Sheets data, ignoring tour completely
+   */
+  function _buildGoogleSheetsOnlyIndex(googleSheetsData, config) {
+    Logger.info(
+      "📊 [GOOGLE SHEETS ONLY] Building search index from Google Sheets data exclusively",
+    );
+    Logger.info(
+      "🚫 Ignoring tour data, business data, and custom thumbnails data",
+    );
+
+    if (!Array.isArray(googleSheetsData) || googleSheetsData.length === 0) {
+      Logger.warn(
+        "⚠️ Google Sheets data not available or empty - returning empty index",
+      );
+      return new Fuse([], { keys: ["label"], includeScore: true });
+    }
+
+    const fuseData = googleSheetsData
+      .map((row, index) => {
+        // Normalize Google Sheets row to standard search item format
+        const sheetItem = {
+          id: row.id || row.name || `sheet_row_${index}`,
+          label: row.name || row.title || row.label || row.id || "Unnamed Item",
+          subtitle: row.description || row.summary || row.details || "",
+          type: _normalizeElementType(row.elementType || row.type) || "Element",
+          imageUrl: row.imageUrl || row.image || row.thumbnail || "",
+          parentLabel: row.parentId || row.parent || row.category || "",
+          tags: _normalizeTagsArray(
+            row.tag || row.tags || row.categories || [],
+          ),
+          // Preserve original sheets data
+          sheetsData: row,
+          // Search optimization
+          boost: row.name ? 1.0 : 0.8,
+          // Source tracking
+          dataSource: "googleSheets",
+          sourceMode: "googleSheetsOnly",
+        };
+
+        // Apply sheets data filtering if configured
+        if (
+          config.filter?.elementTypes?.mode === "blacklist" &&
+          config.filter.elementTypes.blacklistedTypes?.includes(sheetItem.type)
+        ) {
+          return null; // Will be filtered out
+        }
+
+        return sheetItem;
+      })
+      .filter(Boolean); // Remove null entries
+
+    const fuse = new Fuse(fuseData, _getFuseOptions());
+    Logger.info(
+      `✅ [GOOGLE SHEETS ONLY] Successfully indexed ${fuseData.length} sheet items`,
+    );
+    return fuse;
+  }
+
+  // =============================================================================
+  // UTILITY FUNCTIONS
+  // =============================================================================
+
+  /**
+   * Returns standardized Fuse.js options for consistent search behavior
+   * across all data source modes.
+   */
+  function _getFuseOptions() {
+    return {
+      keys: [
+        { name: "label", weight: 1.0 },
+        { name: "subtitle", weight: 0.8 },
+        { name: "tags", weight: 0.6 },
+        { name: "parentLabel", weight: 0.3 },
+      ],
+      includeScore: true,
+      threshold: 0.4,
+      distance: 40,
+      minMatchCharLength: 1,
+      useExtendedSearch: true,
+      ignoreLocation: true,
+      location: 0,
+    };
+  }
+
+  /**
+   * Normalizes element types to standard values
+   */
+  function _normalizeElementType(elementType) {
+    if (!elementType) return "Element";
+
+    const typeMap = {
+      hotspot: "Hotspot",
+      video: "Video",
+      webframe: "Webframe",
+      image: "Image",
+      text: "Text",
+      polygon: "Polygon",
+      business: "Business",
+      panorama: "Panorama",
+    };
+
+    const normalized = elementType.toLowerCase();
+    return typeMap[normalized] || elementType;
+  }
+
+  /**
+   * Normalizes tags to a consistent array format
+   */
+  function _normalizeTagsArray(tags) {
+    if (!tags) return [];
+    if (Array.isArray(tags))
+      return tags.filter((t) => t && typeof t === "string");
+    if (typeof tags === "string")
+      return tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t);
+    return [];
   }
 
   // [7.0] PUBLIC API

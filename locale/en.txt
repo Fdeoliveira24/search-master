@@ -29,10 +29,10 @@ audiores_EF1C2CD6_CA95_642A_41D6_9A00F9C79982.mp3Url = media/audio_ECE9AD5B_CA95
 ### Floorplan
 
 ### Image
-imlevel_DAC32DD4_F3D5_338D_41E1_B8F4996A9CB3.url = media/map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA_en_0.jpg
-imlevel_DAC31DD4_F3D5_338D_41B4_35E94A8860FE.url = media/map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA_en_1.jpg
-imlevel_DAC35DD4_F3D5_338D_41A5_0A9764149140.url = media/map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA_en_2.jpg
-imlevel_DAC34DD4_F3D5_338D_41E7_406003924B35.url = media/map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA_en_3.jpg
+imlevel_3D1C27B6_232E_CB05_41B2_6E84E01210EE.url = media/map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA_en_0.jpg
+imlevel_3D1C37B6_232E_CB05_41C0_CA87B5FA22D5.url = media/map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA_en_1.jpg
+imlevel_3D1BC7B6_232E_CB05_41B0_57B968731D1A.url = media/map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA_en_2.jpg
+imlevel_3D1BD7B6_232E_CB05_41BB_5A4F6B0E772E.url = media/map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA_en_3.jpg
 imlevel_D7039FA8_F3DD_EF85_41D6_9675F1CCE168.url = media/panorama_F151638B_CA7D_BC3A_4175_209ED67A3320_HS_tcyexs8n_en.png
 
 ### Subtitle
@@ -48,10 +48,10 @@ media_9EAA4B28_D090_1E5E_41D1_B73F7FE1363B.label = Technimark-360-video-sample
 map_FAB39D0B_CAB7_A43A_41C1_9698BC3C84DA.label = background-stars
 
 ### Video
-videores_DACDFDA4_F3D5_338D_41BA_9CFAB92D2384.url = media/media_9EAA4B28_D090_1E5E_41D1_B73F7FE1363B_en.mp4
-videores_DACDFDA4_F3D5_338D_41BA_9CFAB92D2384.posterURL = media/media_9EAA4B28_D090_1E5E_41D1_B73F7FE1363B_poster_en.jpg
-videolevel_DAC62E0E_F3D5_309D_41BA_36E3A403AD1B.url = media/video_E7DE24EC_D070_0BD6_41E6_DF11410992CB_en.mp4
-videolevel_DAC62E0E_F3D5_309D_41BA_36E3A403AD1B.posterURL = media/video_E7DE24EC_D070_0BD6_41E6_DF11410992CB_poster_en.jpg
+videores_3D1D6782_232E_CBFD_41B5_8A813526FC2E.url = media/media_9EAA4B28_D090_1E5E_41D1_B73F7FE1363B_en.mp4
+videores_3D1D6782_232E_CBFD_41B5_8A813526FC2E.posterURL = media/media_9EAA4B28_D090_1E5E_41D1_B73F7FE1363B_poster_en.jpg
+videolevel_3D1987F2_232E_CB1D_41B3_480EF2545345.url = media/video_E7DE24EC_D070_0BD6_41E6_DF11410992CB_en.mp4
+videolevel_3D1987F2_232E_CB1D_41B3_480EF2545345.posterURL = media/video_E7DE24EC_D070_0BD6_41E6_DF11410992CB_poster_en.jpg
 
 ### Video Subtitles
 
@@ -64,11 +64,17 @@ Image_B4F84BE8_A7BA_37F9_41E2_2AE1C421F119.url = skin/Image_B4F84BE8_A7BA_37F9_4
 Image_B4F84BE8_A7BA_37F9_41E2_2AE1C421F119_mobile.url = skin/Image_B4F84BE8_A7BA_37F9_41E2_2AE1C421F119_mobile_en.png
 
 ### Label
-Label_AA9CF34D_A78E_103B_41D4_AAFFCCDFBB6F.text = All Rooms
 Label_AA9CF34D_A78E_103B_41D4_AAFFCCDFBB6F_mobile.text = All Rooms
+Label_AA9CF34D_A78E_103B_41D4_AAFFCCDFBB6F.text = All Rooms
+Label_39475BA6_2327_5B05_41AD_CE180167AA27.text = Click
+Label_39475BA6_2327_5B05_41AD_CE180167AA27_mobile.text = Click
+Label_390C0C87_2321_DD03_41AF_C8ACC8FE8064_mobile.text = Hover
+Label_390C0C87_2321_DD03_41AF_C8ACC8FE8064.text = Hover
 Label_94480E13_D070_1672_41C2_8DAA6BE43512.text = MyBoringLabel
-Label_A43C8FDD_AABA_99C7_41E0_76E49970CB94.text = Share
 Label_A43C8FDD_AABA_99C7_41E0_76E49970CB94_mobile.text = Share
+Label_A43C8FDD_AABA_99C7_41E0_76E49970CB94.text = Share
+Label_395ECF5B_2321_7B03_41AD_5984915F87D0.text = Toggle
+Label_395ECF5B_2321_7B03_41AD_5984915F87D0_mobile.text = Toggle
 
 ### Multiline Text
 HTMLText_7D9A6B9B_4960_8F76_41D2_07806B5A9E3C.html = <div style="text-align:left; color:#000; "><DIV STYLE="text-align:left;font-size:2.83vh;"><SPAN STYLE="display:inline-block; letter-spacing:0vh; white-space:pre-wrap;color:#000000;font-family:Arial, Helvetica, sans-serif;"><SPAN STYLE="color:#99bb1b;font-size:2.83vh;font-family:'Antonio';"><B>LOREM IPSUM DOLOR SIT AMET, CONSECTETUR ADIPISCING ELIT. MAECENAS CONGHE EROS MAGNA.</B></SPAN></SPAN></DIV><p STYLE="margin:0; line-height:1.74vh;"><BR STYLE="display:inline-block; letter-spacing:0vh; white-space:pre-wrap;color:#000000;font-size:1.2vh;font-family:Arial, Helvetica, sans-serif;"/></p><DIV STYLE="text-align:left;font-size:1.74vh;"><SPAN STYLE="display:inline-block; letter-spacing:0vh; white-space:pre-wrap;color:#000000;font-family:Arial, Helvetica, sans-serif;"><SPAN STYLE="color:#999999;font-size:1.74vh;font-family:'Open Sans Semibold';">Proin sit amet pharetra magna. Donec varius eu nisi at facilisis. Vivamus nibh magna, fermentum ac nibh sit amet, euismod efficitur sem. Fusce blandit, purus sed gravida vulputate, justo quam laoreet quam, et dictum mauris arcu vitae justo. Vivamus euismod condimentum ligula quis feugiat. Cras imperdiet tortor mi, a posuere velit tempus et. Maecenas et scelerisque turpis. Quisque in gravida leo, sed dapibus nibh. Ut at consequat turpis.</SPAN></SPAN></DIV></div>
@@ -84,7 +90,7 @@ HTMLText_728B0555_49A1_FBF2_41A5_B80B959E3BE2.html = <div style="text-align:left
 tour.description = Login System with Virtual Tour Integration for 3D Vista Software - Demo By 360 Virtual Tour Solutions
 
 ### Title
-tour.name = Advanced Search Pro for 3D Vista Tours v1
+tour.name = Advanced Search Pro for 3D Vista Tours - Non-Mod
 
 ## VR Menu
 

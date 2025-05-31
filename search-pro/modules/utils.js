@@ -11,19 +11,19 @@ window.SearchProModules.Utils = (function () {
     level: 2,
 
     debug: function (message, ...args) {
-      if (this.level <= 0) console.debug(`[Search] ${message}`, ...args);
+      if (this.level <= 0) window.searchProDebugLogger.debug(message, ...args);
     },
 
     info: function (message, ...args) {
-      if (this.level <= 1) console.info(`[Search] ${message}`, ...args);
+      if (this.level <= 1) window.searchProDebugLogger.info(message, ...args); 
     },
 
     warn: function (message, ...args) {
-      if (this.level <= 2) console.warn(`[Search] ${message}`, ...args);
+      if (this.level <= 2) window.searchProDebugLogger.warn(message, ...args);
     },
 
     error: function (message, ...args) {
-      if (this.level <= 3) console.error(`[Search] ${message}`, ...args);
+      if (this.level <= 3) window.searchProDebugLogger.error(message, ...args);
     },
   };
 

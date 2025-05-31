@@ -1,238 +1,197 @@
 /*
 ====================================
 3DVista Enhanced Search Script
-Version: 2.0.5
-Last Updated: 05/19/2025
+Version: 2.1.0
+Last Updated: 05/29/2025
 Description: Core search functionality for 3DVista tours with improved element detection,
 filtering options, and better UI interactions. Optimized for both desktop and mobile.
-This version refactors the code to include dynamic DOM, markup and script loading.
+This version implements robust initialization patterns, proper lifecycle management,
+and multiple fallback strategies for tour readiness detection.
 ====================================
 */
 
-// [CONFIG_SCHEMA] Defines the config shape, types, and default values
-const CONFIG_SCHEMA = {
-  radius: { type: "number", default: 10 },
-  color: { type: "string", default: "#000000" },
-  businessData: { type: "object", default: { useBusinessData: false } },
-  googleSheets: {
-    type: "object",
-    default: {
-      useGoogleSheetData: true,
-      googleSheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ9oy4JjwYAdTG1DKne9cu76PZCrZgtIOCX56sxVoBwRzys36mTqvFMvTE2TB-f-k5yZz_uWwW5Ou/pub?output=csv",
-      fetchMode: "csv",
-      useAsDataSource: true, // If true, this sheet is the primary data source; if false, it enhances existing data
-      csvOptions: {
-        delimiter: ",",
-        quoteChar: '"',
-        escapeChar: '"',
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: false,
-      },
-      progressiveLoading: {
-        enabled: false,
-        initialFields: ["id", "tag", "name"],
-        detailFields: ["description", "imageUrl", "elementType", "parentId"],
-      },
-      authentication: {
-        enabled: false,
-        authType: "apiKey",
-        apiKey: "",
-        apiKeyParam: "key",
-      },
-    },
-  },
-  minSearchChars: { type: "number", default: 2 },
-  showTagsInResults: { type: "boolean", default: false },
-};
-
-// [CONFIG VALIDATION] Ensures config matches schema and applies defaults
-function validateConfig(config, schema) {
-  const validatedConfig = {};
-
-  Object.keys(schema).forEach((key) => {
-    const { type, default: defaultValue } = schema[key];
-    const value = config[key];
-
-    if (type === "object" && typeof defaultValue === "object") {
-      // Recursively validate nested objects
-      validatedConfig[key] = validateConfig(value || {}, defaultValue);
-    } else if (value === undefined || typeof value !== type) {
-      console.warn(
-        `Invalid or missing config property "${key}". Using default value:`,
-        defaultValue,
-      );
-      validatedConfig[key] = defaultValue;
-    } else {
-      validatedConfig[key] = value;
-    }
-  });
-
-  return validatedConfig;
-}
-
-function validateAndApplyDefaults(config, schema) {
-  const validated = {};
-  for (const key in schema) {
-    const { type, default: def } = schema[key];
-    if (config && Object.prototype.hasOwnProperty.call(config, key)) {
-      if (typeof config[key] === type) {
-        validated[key] = config[key];
-      } else {
-        validated[key] = def;
-      }
-    } else {
-      validated[key] = def;
-    }
-  }
-  // Optionally, include any additional keys present in config
-  for (const key in config) {
-    if (!validated.hasOwnProperty(key)) {
-      validated[key] = config[key];
-    }
-  }
-  return validated;
-}
-
-// Function to merge user config with default config
-function mergeConfig(userConfig, defaultConfig) {
-  const mergedConfig = { ...defaultConfig };
-
-  Object.keys(userConfig || {}).forEach((key) => {
-    if (typeof userConfig[key] === "object" && !Array.isArray(userConfig[key])) {
-      // Recursively merge nested objects
-      mergedConfig[key] = mergeConfig(userConfig[key], defaultConfig[key] || {});
-    } else {
-      // Override default with user-provided value
-      mergedConfig[key] = userConfig[key];
-    }
-  });
-
-  return mergedConfig;
-}
-
-// Default configuration
-const DEFAULT_CONFIG = {
-  googleSheets: {
-    useGoogleSheetData: true, // Use Google Sheets as a data source
-    googleSheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ9oy4JjwYAdTG1DKne9cu76PZCrZgtIOCX56sxVoBwRzys36mTqvFMvTE2TB-f-k5yZz_uWwW5Ou/pub?output=csv",
-    fetchMode: "csv",
-    useAsDataSource: false,
-    csvOptions: {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: true,
-    },
-    caching: {
-      enabled: true,
-      timeoutMinutes: 60,
-      storageKey: "tourGoogleSheetsData",
-    },
-    progressiveLoading: {
-      enabled: true,
-      initialFields: ["id", "tag", "name"],
-      detailFields: ["description", "imageUrl", "elementType", "parentId"],
-    },
-    authentication: {
-      enabled: false,
-      authType: "apiKey",
-      apiKey: "",
-      apiKeyParam: "key",
-    },
-  },
-  filter: {
-    panoramaLabels: {
-      mode: "none",
-      allowedValues: [],
-      blacklistedValues: [],
-    },
-    allowedMediaIndexes: [],
-    blacklistedMediaIndexes: [],
-  },
-};
-
-// Merge user config with default config
-const userConfig = window.searchProConfig || {};
-const config = mergeConfig(userConfig, DEFAULT_CONFIG);
-
-// Validate the merged configuration
-const validatedConfig = validateConfig(config, CONFIG_SCHEMA);
-
-// Use the validated configuration for all modules and features
-window.searchProConfig = validatedConfig;
-
-// Initialize modules with validated configuration
-function initializeModules(config) {
-  // Initialize each module with the validated configuration
-  if (window.SearchProModules) {
-    if (window.SearchProModules.SearchEngine) {
-      window.SearchProModules.SearchEngine.initialize(config);
-    }
-    if (window.SearchProModules.DataManager) {
-      window.SearchProModules.DataManager.initialize(config);
-    }
-    if (window.SearchProModules.DOMHandler) {
-      window.SearchProModules.DOMHandler.initialize(config);
-    }
-    if (window.SearchProModules.UIManager) {
-      window.SearchProModules.UIManager.initialize(config);
-    }
-  }
-}
-
-// [0.0] SCRIPT LOADER AND INITIALIZATION
-(function () {
+// [0.0] SEARCH PRO LIFECYCLE MANAGER
+// This self-executing function manages the entire lifecycle of the Search Pro plugin
+(function() {
+  // [0.1] CORE UTILITIES AND CONSTANTS
   const Logger = window.searchProDebugLogger || console;
-
-  // [0.0.1] Check if script is already loaded
-  if (window._searchProLoaded) {
-    Logger.info("Search Pro is already loaded. Skipping initialization.");
-    return;
+  const SCRIPT_VERSION = '2.1.0';
+  
+  // [0.2] MODULE STATE TRACKING
+  const SearchProState = {
+    isLoaded: false,        // Script has been loaded
+    isInitialized: false,   // Search has been initialized with tour
+    isModulesLoaded: false, // All modules are loaded
+    pendingInitializations: [], // Queue of initialization requests
+    cleanupFunctions: [],   // Functions to run during teardown
+    domObserver: null,      // MutationObserver for tour DOM changes
+    tourEventListeners: [], // Tour-specific event listeners
+    
+    // Module loading state
+    modules: {
+      required: ["Utils", "DOMHandler", "DataManager", "SearchEngine", "UIManager", "RelatedContent"],
+      loaded: []
+    }
+  };
+  
+  // [0.3] TOUR DETECTION AND READINESS
+  
+  // [0.3.1] Check if mainPlayList is fully ready (with items)
+  function isMainPlayListReady() {
+    const tour = window.tour || window.tourInstance;
+    return (
+      tour &&
+      tour.mainPlayList &&
+      typeof tour.mainPlayList.get === "function" &&
+      Array.isArray(tour.mainPlayList.get("items")) &&
+      tour.mainPlayList.get("items").length > 0
+    );
   }
-
-  // [0.0.2] Mark as loaded
-  window._searchProLoaded = true;
-
-  // [0.1] DEPENDENCY LOADER
-  function loadDependencies() {
+  
+  // [0.3.2] Promise-based tour readiness detection with multiple strategies
+  function waitForTourReady(timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
-      // [0.1.1] Try to detect if Fuse.js is already loaded
+      // If tour is already ready, resolve immediately
+      if (isMainPlayListReady()) {
+        Logger.info("Tour already ready, proceeding with initialization");
+        resolve(window.tour || window.tourInstance);
+        return;
+      }
+      
+      // Strategy 1: Use official TDV event if available
+      if (window.TDV && window.TDV.Tour && window.TDV.Tour.EVENT_TOUR_LOADED && window.tour) {
+        Logger.info("Using TDV.Tour.EVENT_TOUR_LOADED for initialization");
+        
+        // Add to cleanup functions
+        const unbindEvent = () => {
+          try {
+            window.tour.unbind(window.TDV.Tour.EVENT_TOUR_LOADED, onTourLoaded);
+          } catch (e) {
+            // Ignore errors during cleanup
+          }
+        };
+        SearchProState.cleanupFunctions.push(unbindEvent);
+        
+        // Set up event listener
+        const onTourLoaded = function() {
+          if (isMainPlayListReady()) {
+            unbindEvent();
+            resolve(window.tour);
+          } else {
+            // Even after EVENT_TOUR_LOADED, the tour might not be fully ready
+            // Fall back to polling
+            Logger.info("Tour event fired but mainPlayList not ready, falling back to polling");
+            startPolling();
+          }
+        };
+        
+        window.tour.bind(window.TDV.Tour.EVENT_TOUR_LOADED, onTourLoaded);
+        return;
+      }
+      
+      // Strategy 2: Set up DOM observer for tour changes
+      function setupDOMObserver() {
+        if (SearchProState.domObserver) return;
+        
+        const observer = new MutationObserver((mutations) => {
+          if (isMainPlayListReady()) {
+            observer.disconnect();
+            SearchProState.domObserver = null;
+            resolve(window.tour || window.tourInstance);
+          }
+        });
+        
+        // Observe document body for changes that might indicate tour loading
+        observer.observe(document.body, { 
+          childList: true, 
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['class', 'style']
+        });
+        
+        SearchProState.domObserver = observer;
+        SearchProState.cleanupFunctions.push(() => {
+          if (SearchProState.domObserver) {
+            SearchProState.domObserver.disconnect();
+            SearchProState.domObserver = null;
+          }
+        });
+      }
+      
+      // Strategy 3: Polling with timeout
+      function startPolling() {
+        const pollInterval = 200;
+        const start = Date.now();
+        let pollTimer;
+        
+        const poll = () => {
+          if (isMainPlayListReady()) {
+            clearTimeout(pollTimer);
+            resolve(window.tour || window.tourInstance);
+            return;
+          }
+          
+          if (Date.now() - start > timeoutMs) {
+            clearTimeout(pollTimer);
+            Logger.warn("Tour readiness polling timed out after", timeoutMs, "ms");
+            reject(new Error("Tour did not become ready within the timeout period"));
+            return;
+          }
+          
+          pollTimer = setTimeout(poll, pollInterval);
+        };
+        
+        poll();
+        
+        // Add cleanup function
+        SearchProState.cleanupFunctions.push(() => {
+          clearTimeout(pollTimer);
+        });
+      }
+      
+      // Start both strategies in parallel
+      setupDOMObserver();
+      startPolling();
+    });
+  }
+  
+  // [0.4] DEPENDENCY MANAGEMENT
+  
+  // [0.4.1] Load Fuse.js dependency
+  function loadFuseJS() {
+    return new Promise((resolve, reject) => {
+      // Skip if already loaded
       if (typeof Fuse !== "undefined") {
-        Logger.log("Fuse.js already loaded, skipping load");
+        Logger.info("Fuse.js already loaded, skipping load");
         resolve();
         return;
       }
 
-      // [0.1.2] Try to load local Fuse.js first
+      // Try to load local Fuse.js first
       const fuseScript = document.createElement("script");
       fuseScript.src = "search-pro/fuse.js/dist/fuse.min.js";
       fuseScript.async = true;
 
       fuseScript.onload = () => {
-        Logger.log("Local Fuse.js loaded successfully");
+        Logger.info("Local Fuse.js loaded successfully");
         resolve();
       };
 
       fuseScript.onerror = () => {
-        Logger.info(
-          "Local Fuse.js failed to load, attempting to load from CDN...",
-        );
+        Logger.info("Local Fuse.js failed to load, attempting to load from CDN...");
 
-        // [0.1.3] Fallback to CDN
+        // Fallback to CDN
         const fuseCDN = document.createElement("script");
-        fuseCDN.src =
-          "https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js";
+        fuseCDN.src = "https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js";
         fuseCDN.async = true;
 
         fuseCDN.onload = () => {
-          Logger.log("Fuse.js loaded successfully from CDN");
+          Logger.info("Fuse.js loaded successfully from CDN");
           resolve();
         };
 
         fuseCDN.onerror = () => {
-          const error = new Error(
-            "Both local and CDN versions of Fuse.js failed to load",
-          );
+          const error = new Error("Both local and CDN versions of Fuse.js failed to load");
           Logger.error(error);
           reject(error);
         };
@@ -244,10 +203,10 @@ function initializeModules(config) {
     });
   }
 
-  // [0.2] OPTIONAL DEBUG TOOLS LOADER
+  // [0.4.2] Load debug tools if enabled
   function loadDebugTools() {
     return new Promise((resolve) => {
-      // [0.2.1] Check for debug flag (can be set in URL or localStorage)
+      // Check for debug flag (can be set in URL or localStorage)
       const debugEnabled =
         window.location.search.includes("debug=true") ||
         localStorage.getItem("searchProDebugEnabled") === "true";
@@ -262,7 +221,7 @@ function initializeModules(config) {
       debugScript.async = true;
 
       debugScript.onload = () => {
-        Logger.log("Search Pro Debug Tools loaded successfully");
+        Logger.info("Search Pro Debug Tools loaded successfully");
         resolve(true);
       };
 
@@ -274,136 +233,252 @@ function initializeModules(config) {
       document.body.appendChild(debugScript);
     });
   }
-
-  // [0.3] MAIN INITIALIZATION FUNCTION
-  async function initialize() {
-    try {
-      // [0.3.1] Check if modules are available
-      const modulesLoaded =
-        window.SearchProModules &&
-        window.SearchProModules.Utils &&
-        window.SearchProModules.DOMHandler &&
-        window.SearchProModules.DataManager &&
-        window.SearchProModules.SearchEngine &&
-        window.SearchProModules.UIManager &&
-        window.SearchProModules.RelatedContent;
-
-      if (!modulesLoaded) {
-        (window.searchProDebugLogger || console).error(
-          "Search Pro modules not loaded. Waiting for modules...",
-        );
-        setTimeout(initialize, 100); // Try again in 100ms
-        return;
-      }
-
-      const DOMHandler = window.SearchProModules.DOMHandler;
-
-      // [0.3.2] Load CSS first
-      await DOMHandler.loadCSS();
-
-      // [0.3.3] Initialize DOM
-      if (!DOMHandler.initializeDom()) {
-        return;
-      }
-
-      // [0.3.4] Load dependencies
-      await loadDependencies();
-
-      // [0.3.5] Optionally load debug tools
-      await loadDebugTools();
-
-      // [0.3.7] Simple approach - just try to initialize immediately
-      if (
-        window.tourSearchFunctions &&
-        typeof window.tourSearchFunctions.initializeSearch === "function"
-      ) {
-        const tourObj = window.tour || window.tourInstance || null;
-        if (tourObj) {
-          (window.searchProDebugLogger || console).log(
-            "✅ Tour object found, initializing search...",
-          );
-          window.tourSearchFunctions.initializeSearch(tourObj);
-        } else {
-          (window.searchProDebugLogger || console).log(
-            "⏳ Tour object not ready, will initialize when button is clicked",
-          );
-        }
-      } else {
-        (window.searchProDebugLogger || console).error(
-          "Search Pro initialization failed: tourSearchFunctions not available",
-        );
-      }
-    } catch (error) {
-      (window.searchProDebugLogger || console).error(
-        "Search Pro initialization failed:",
-        error,
-      );
-    }
-  }
-
-  // [0.4] MODULE LOADER
+  
+  // [0.4.3] Load all search pro modules
   function loadModules() {
-    const moduleNames = [
-      "utils",
-      "dom-handler",
-      "data-manager",
-      "search-engine",
-      "ui-manager",
-      "related-content",
-    ];
-
-    let modulesLoaded = 0;
-
-    moduleNames.forEach((moduleName) => {
-      const script = document.createElement("script");
-      script.src = `search-pro/modules/${moduleName}.js`;
-      script.async = false; // Load in sequence to respect dependencies
-
-      script.onload = () => {
-        modulesLoaded++;
-        (window.searchProDebugLogger || console).log(
-          `✅ Loaded module: ${moduleName} (${modulesLoaded}/${moduleNames.length})`,
-        );
-        // [0.4.1] Add existence check before proceeding
-        if (modulesLoaded === moduleNames.length) {
-          // [0.4.2] Verify all modules are actually available
-          const requiredModules = [
-            "Utils",
-            "DOMHandler",
-            "DataManager",
-            "SearchEngine",
-            "UIManager",
-            "RelatedContent",
-          ];
-          const missingModules = requiredModules.filter(
-            (mod) => !window.SearchProModules?.[mod],
-          );
-          if (missingModules.length > 0) {
-            (window.searchProDebugLogger || console).error(
-              "❌ Missing modules:",
-              missingModules,
-            );
-            return;
+    return new Promise((resolve, reject) => {
+      // Skip if modules are already loaded
+      if (SearchProState.isModulesLoaded) {
+        resolve();
+        return;
+      }
+      
+      const moduleNames = [
+        "utils",
+        "dom-handler",
+        "data-manager",
+        "search-engine",
+        "ui-manager",
+        "related-content",
+      ];
+      
+      let modulesLoaded = 0;
+      let hasErrors = false;
+      
+      moduleNames.forEach((moduleName) => {
+        // Skip if already loaded
+        if (SearchProState.modules.loaded.includes(moduleName)) {
+          modulesLoaded++;
+          if (modulesLoaded === moduleNames.length) {
+            verifyModules();
           }
-          (window.searchProDebugLogger || console).log(
-            "✅ All modules loaded and verified, initializing search...",
-          );
-          initialize();
+          return;
         }
-      };
-
-      script.onerror = () => {
-        (window.searchProDebugLogger || console).error(
-          `❌ Failed to load module: ${moduleName}`,
+        
+        const script = document.createElement("script");
+        script.src = `search-pro/modules/${moduleName}.js`;
+        script.async = false; // Load in sequence to respect dependencies
+  
+        script.onload = () => {
+          modulesLoaded++;
+          SearchProState.modules.loaded.push(moduleName);
+          Logger.info(`Loaded module: ${moduleName} (${modulesLoaded}/${moduleNames.length})`);
+          
+          if (modulesLoaded === moduleNames.length) {
+            verifyModules();
+          }
+        };
+  
+        script.onerror = () => {
+          modulesLoaded++;
+          hasErrors = true;
+          Logger.error(`Failed to load module: ${moduleName}`);
+          
+          if (modulesLoaded === moduleNames.length) {
+            if (hasErrors) {
+              reject(new Error("One or more modules failed to load"));
+            } else {
+              verifyModules();
+            }
+          }
+        };
+  
+        document.body.appendChild(script);
+      });
+      
+      // Verify all required modules are available
+      function verifyModules() {
+        const missingModules = SearchProState.modules.required.filter(
+          (mod) => !window.SearchProModules?.[mod]
         );
-      };
-
-      document.body.appendChild(script);
+        
+        if (missingModules.length > 0) {
+          Logger.error("Missing required modules:", missingModules);
+          reject(new Error(`Missing required modules: ${missingModules.join(", ")}`));
+          return;
+        }
+        
+        SearchProState.isModulesLoaded = true;
+        Logger.info("All modules loaded and verified successfully");
+        resolve();
+      }
     });
   }
-
-  // [0.5] START LOADING MODULES AND THEN INITIALIZE
-  loadModules();
+  
+  // [0.5] INITIALIZATION AND LIFECYCLE MANAGEMENT
+  
+  // [0.5.1] Initialize all dependencies and prepare for search
+  async function initializeDependencies() {
+    try {
+      // Skip if already initialized
+      if (SearchProState.isLoaded) {
+        return true;
+      }
+      
+      // Load all modules first
+      await loadModules();
+      
+      // Get essential module references
+      const DOMHandler = window.SearchProModules.DOMHandler;
+      
+      // Load CSS and initialize DOM
+      await DOMHandler.loadCSS();
+      if (!DOMHandler.initializeDom()) {
+        throw new Error("Failed to initialize DOM");
+      }
+      
+      // Load dependencies and debug tools in parallel
+      await Promise.all([
+        loadFuseJS(),
+        loadDebugTools()
+      ]);
+      
+      // Mark as loaded
+      SearchProState.isLoaded = true;
+      Logger.info("✅ Search Pro dependencies initialized successfully");
+      return true;
+    } catch (error) {
+      Logger.error("Failed to initialize dependencies:", error);
+      return false;
+    }
+  }
+  
+  // [0.5.2] Main search initialization with tour instance
+  async function initializeSearch(tour) {
+    // Skip if no tour provided
+    if (!tour) {
+      Logger.error("No tour instance provided for initialization");
+      return false;
+    }
+    
+    try {
+      // Initialize dependencies if not already done
+      if (!SearchProState.isLoaded) {
+        const success = await initializeDependencies();
+        if (!success) {
+          throw new Error("Failed to initialize dependencies");
+        }
+      }
+      
+      // Skip if already initialized with this tour
+      if (SearchProState.isInitialized) {
+        Logger.info("Search already initialized, skipping initialization");
+        return true;
+      }
+      
+      // Initialize search engine with tour
+      if (window.SearchProModules?.SearchEngine?.initialize) {
+        await window.SearchProModules.SearchEngine.initialize(tour);
+        
+        // Set initialization flags for backward compatibility
+        window.searchListInitialized = true;
+        window.searchListInitiinitialized = true; // Maintain typo for compatibility
+        SearchProState.isInitialized = true;
+        
+        Logger.info("✅ Search initialized successfully with tour");
+        return true;
+      } else {
+        throw new Error("SearchEngine module not available");
+      }
+    } catch (error) {
+      Logger.error("Failed to initialize search:", error);
+      return false;
+    }
+  }
+  
+  // [0.5.3] Cleanup all resources and event listeners
+  function cleanup() {
+    Logger.info("Cleaning up Search Pro resources");
+    
+    // Run all registered cleanup functions
+    SearchProState.cleanupFunctions.forEach(fn => {
+      try {
+        fn();
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    });
+    
+    // Clear all state
+    SearchProState.cleanupFunctions = [];
+    SearchProState.pendingInitializations = [];
+    SearchProState.isInitialized = false;
+    
+    // Disconnect DOM observer if active
+    if (SearchProState.domObserver) {
+      SearchProState.domObserver.disconnect();
+      SearchProState.domObserver = null;
+    }
+    
+    // Remove tour event listeners
+    SearchProState.tourEventListeners.forEach(({ target, event, listener }) => {
+      try {
+        if (target && typeof target.unbind === 'function') {
+          target.unbind(event, listener);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    });
+    SearchProState.tourEventListeners = [];
+    
+    Logger.info("Search Pro cleanup completed");
+  }
+  
+  // [0.6] ENTRY POINT: Initialize search when tour is ready
+  async function initializeSearchWhenTourReady() {
+    // Skip if already initialized
+    if (SearchProState.isInitialized) {
+      Logger.info("Search already initialized, skipping initialization");
+      return true;
+    }
+    
+    try {
+      // Initialize dependencies
+      await initializeDependencies();
+      
+      // Wait for tour to be ready
+      const tour = await waitForTourReady();
+      
+      // Initialize search with tour
+      return await initializeSearch(tour);
+    } catch (error) {
+      Logger.error("Failed to initialize search when tour ready:", error);
+      return false;
+    }
+  }
+  
+  // [0.7] EXPOSE PUBLIC API
+  
+  // Create global namespace if it doesn't exist
+  window.SearchProModules = window.SearchProModules || {};
+  
+  // Expose lifecycle management functions
+  window.SearchProModules.Lifecycle = {
+    initialize: initializeSearch,
+    initializeWhenReady: initializeSearchWhenTourReady,
+    cleanup: cleanup,
+    getState: () => ({ ...SearchProState }),
+    version: SCRIPT_VERSION
+  };
+  
+  // [0.8] AUTO-START: Begin loading modules but don't auto-initialize
+  if (!window._searchProLoaded) {
+    window._searchProLoaded = true;
+    initializeDependencies().then(() => {
+      Logger.info("✅ Search Pro dependencies loaded. Will initialize when tour is ready or button is clicked.");
+    });
+  }
 })();
 
 // [1.0] CREATE EMPTY SearchProModules OBJECT IF IT DOESN'T EXIST YET
@@ -411,6 +486,44 @@ window.SearchProModules = window.SearchProModules || {};
 
 // [2.0] MAIN SEARCH MODULE DEFINITION
 window.tourSearchFunctions = (function () {
+  // [1.0] MODULE DEPENDENCIES
+  const DOMHandler =
+    window.SearchProModules && window.SearchProModules.DOMHandler;
+  const DataManager =
+    window.SearchProModules && window.SearchProModules.DataManager;
+  const SearchEngine =
+    window.SearchProModules && window.SearchProModules.SearchEngine;
+  const DataSourceModes =
+    window.SearchProModules && window.SearchProModules.DataSourceModes;
+  // Safe logger fallback
+  const Logger =
+    (window.SearchProModules &&
+      window.SearchProModules.Utils &&
+      window.SearchProModules.Utils.Logger) ||
+    console;
+
+  // [1.1] VALIDATION UTILITIES
+  function validateConfig(config) {
+    if (!config) config = {};
+
+    // Ensure essential defaults exist
+    return {
+      businessData: {
+        useBusinessData: config.businessData?.useBusinessData || false,
+        businessDataFile:
+          config.businessData?.businessDataFile || "business.json",
+        businessDataDir:
+          config.businessData?.businessDataDir || "business-data",
+      },
+      googleSheets: {
+        useGoogleSheetData: config.googleSheets?.useGoogleSheetData || false,
+        googleSheetUrl: config.googleSheets?.googleSheetUrl || "",
+        fetchMode: config.googleSheets?.fetchMode || "csv",
+      },
+      ...config,
+    };
+  }
+
   // [2.1] CONSTANTS AND CONFIGURATION
   const BREAKPOINTS = {
     mobile: 768,
@@ -451,14 +564,16 @@ window.tourSearchFunctions = (function () {
         },
         // Business data integration
         businessData: {
-          useBusinessData: false,
+          useBusinessData: false, // Enable or disable business data integration
+          useAsDataSource: true, // If true, business data is primary; if false, hybrid enhancement
           businessDataFile: "business.json",
           businessDataDir: "business-data",
         },
         // Google Sheets integration
         googleSheets: {
-          useGoogleSheetData: true, // Use Google Sheets as a data source
-          googleSheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ9oy4JjwYAdTG1DKne9cu76PZCrZgtIOCX56sxVoBwRzys36mTqvFMvTE2TB-f-k5yZz_uWwW5Ou/pub?output=csv",
+          useGoogleSheetData: false, // Enable or disable Google Sheets integration
+          googleSheetUrl:
+            "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ9oy4JjwYAdTG1DKne9cu76PZCrZgtIOCX56sxVoBwRzys36mTqvFMvTE2TB-f-k5yZz_uWwW5Ou/pub?output=csv",
           fetchMode: "csv", // 'csv' or 'json'
           useAsDataSource: true, // If true, sheet is primary; if false, hybrid enhancement
           csvOptions: {
@@ -468,13 +583,13 @@ window.tourSearchFunctions = (function () {
           },
           // Caching options
           caching: {
-            enabled: true,
+            enabled: false, // Enable or disable Google Sheets integration caching
             timeoutMinutes: 60, // Cache expiration time
             storageKey: "tourGoogleSheetsData",
           },
           // Progressive loading options
           progressiveLoading: {
-            enabled: false,
+            enabled: false, // Enable or disable progressive loading
             initialFields: ["id", "tag", "name"], // Essential fields loaded first
             detailFields: [
               "description",
@@ -485,7 +600,7 @@ window.tourSearchFunctions = (function () {
           },
           // Authentication options
           authentication: {
-            enabled: false,
+            enabled: false, // Enable or disable authentication
             authType: "apiKey", // 'apiKey' or 'oauth'
             apiKey: "",
             apiKeyParam: "key", // URL parameter name for API key
@@ -975,7 +1090,7 @@ window.tourSearchFunctions = (function () {
         useGoogleSheetData:
           options.useGoogleSheetData !== undefined
             ? options.useGoogleSheetData
-            : true, // If true, sheet is primary; if false, hybrid enhancement
+            : false, // Enable or disable Google Sheets integration
         googleSheetUrl:
           options.googleSheetUrl ||
           "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ9oy4JjwYAdTG1DKne9cu76PZCrZgtIOCX56sxVoBwRzys36mTqvFMvTE2TB-f-k5yZz_uWwW5Ou/pub?output=csv",
@@ -983,20 +1098,8 @@ window.tourSearchFunctions = (function () {
         useAsDataSource:
           options.useAsDataSource !== undefined
             ? options.useAsDataSource
-            : true, // If true, sheet is primary; if false, hybrid enhancement
+            : false, // If true, sheet is primary; if false, hybrid enhancement
         csvOptions: {
-          delimiter:
-            options.csvOptions?.delimiter !== undefined
-              ? options.csvOptions.delimiter
-              : ",",
-          quoteChar:
-            options.csvOptions?.quoteChar !== undefined
-              ? options.csvOptions.quoteChar
-              : '"',
-          escapeChar:
-            options.csvOptions?.escapeChar !== undefined
-              ? options.csvOptions.escapeChar
-              : '"',
           header:
             options.csvOptions?.header !== undefined
               ? options.csvOptions.header
@@ -1008,7 +1111,7 @@ window.tourSearchFunctions = (function () {
           dynamicTyping:
             options.csvOptions?.dynamicTyping !== undefined
               ? options.csvOptions.dynamicTyping
-              : false,
+              : true,
           ...options.csvOptions,
         },
         // Caching options
@@ -1016,7 +1119,7 @@ window.tourSearchFunctions = (function () {
           enabled:
             options.caching?.enabled !== undefined
               ? options.caching.enabled
-              : true,
+              : false, // Enable or disable Google Sheets integration caching
           timeoutMinutes: options.caching?.timeoutMinutes || 60,
           storageKey: options.caching?.storageKey || "tourGoogleSheetsData",
         },
@@ -1070,16 +1173,6 @@ window.tourSearchFunctions = (function () {
     .setDisplayLabels({})
     .build();
 
-  // [2.1.3] Validate and sanitize the configuration object
-  const rawConfig = validatedConfig;
-  _config = { ..._config, ...rawConfig };
-
-  // Fallback for missing configuration
-  if (!window.searchProConfig) {
-    console.warn("No configuration found. Using default configuration.");
-    window.searchProConfig = validatedConfig;
-  }
-
   let _initialized = false;
 
   // [2.2] DOM ELEMENT CACHE
@@ -1093,6 +1186,145 @@ window.tourSearchFunctions = (function () {
 
   // Make elements available to both the direct API and modules
   window.SearchProModules.elements = _elements;
+
+  // New initialization sequence manager
+  async function initializeSearch(tour, config) {
+    try {
+      // 1. Show loading indicator
+      DOMHandler.showLoadingState("Initializing search...");
+
+      // 2. Validate tour object
+      if (!tour || !tour.mainPlayList) {
+        throw new Error("Tour or mainPlayList not available");
+      }
+
+      // 3. Ensure configuration is valid
+      const validatedConfig = validateConfig(config);
+
+      // 4. Determine active data source mode
+      const activeMode = DataSourceModes.getActiveMode(validatedConfig);
+      Logger.info(`Initializing search with ${activeMode} mode`);
+
+      // 5. Load only the necessary data for the active mode
+      let businessData = [];
+      let googleSheetsData = [];
+
+      if (
+        activeMode === DataSourceModes.BUSINESS ||
+        (activeMode === DataSourceModes.TOUR &&
+          validatedConfig.businessData?.useBusinessData)
+      ) {
+        businessData = await DataManager.loadBusinessData(validatedConfig);
+      }
+
+      if (
+        activeMode === DataSourceModes.GOOGLE_SHEETS ||
+        (activeMode === DataSourceModes.TOUR &&
+          validatedConfig.googleSheets?.useGoogleSheetData)
+      ) {
+        googleSheetsData =
+          await DataManager.loadGoogleSheetsData(validatedConfig);
+      }
+
+      // 6. Build search index
+      const searchIndex = SearchEngine.prepareSearchIndex(
+        tour,
+        validatedConfig,
+        businessData,
+        googleSheetsData,
+        activeMode,
+      );
+
+      // 7. Update UI to reflect mode
+      DOMHandler.updateInterfaceForMode(activeMode, validatedConfig);
+
+      // 8. Complete initialization
+      window.searchListInitialized = true;
+      window.searchListInitiinitialized = true;
+
+      // 9. Hide loading indicator
+      DOMHandler.hideLoadingState();
+
+      return searchIndex;
+    } catch (error) {
+      // Handle initialization errors
+      DOMHandler.showErrorState("Search initialization failed", error.message);
+      Logger.error("Search initialization failed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Mode switching utility for runtime mode changes
+   */
+  function switchDataSourceMode(mode) {
+    try {
+      // 1. Get current configuration
+      const currentConfig = window.tourSearchFunctions.getConfig();
+
+      // 2. Update configuration with new mode
+      if (!mode) {
+        Logger.error("No mode specified for switchDataSourceMode");
+        return false;
+      }
+
+      // 3. Get DataSourceModes reference
+      const SearchEngine = window.SearchProModules?.SearchEngine;
+      const DataSourceModes = SearchEngine?.DataSourceModes;
+      if (!DataSourceModes) {
+        Logger.error("DataSourceModes not available");
+        return false;
+      }
+
+      // 4. Validate the requested mode
+      const validModes = [
+        DataSourceModes.TOUR,
+        DataSourceModes.BUSINESS,
+        DataSourceModes.GOOGLE_SHEETS,
+        DataSourceModes.CUSTOM_THUMBNAILS,
+      ];
+      if (!validModes.includes(mode)) {
+        Logger.error(`Invalid mode: ${mode}. Valid modes:`, validModes);
+        return false;
+      }
+
+      // 5. Update configuration with new mode
+      const updatedConfig = DataSourceModes.setMode(currentConfig, mode);
+      //const updatedConfig = DataSourceModes.setMode(currentConfig, mode);
+      // Tour Only
+      // const updatedConfig = DataSourceModes.setMode(currentConfig, DataSourceModes.TOUR);
+      // Business Data Only
+      // const updatedConfig = DataSourceModes.setMode(currentConfig, DataSourceModes.BUSINESS);
+      //Custom Thumbs Only
+      // const updatedConfig = DataSourceModes.setMode(currentConfig, DataSourceModes.CUSTOM_THUMBNAILS);
+      // Google Sheets Only
+      // const updatedConfig = DataSourceModes.setMode(currentConfig, DataSourceModes.GOOGLE_SHEETS);
+
+      // 3. Apply configuration
+      window.tourSearchFunctions.updateConfig(updatedConfig);
+
+      // 4. Clear old data
+      DataManager.clearDataForMode(mode);
+
+      // 5. Reinitialize search
+      const tour = window.tour || window.tourInstance;
+      window.searchListInitialized = false;
+      window.searchListInitiinitialized = false;
+
+      // 6. Show mode change notification
+      DOMHandler.showNotification(`Switched to ${mode} mode`);
+
+      // 7. Initialize with new configuration
+      return initializeSearch(tour, updatedConfig);
+    } catch (error) {
+      Logger.error(`Failed to switch to ${mode} mode:`, error);
+      DOMHandler.showErrorState(
+        `Failed to switch to ${mode} mode`,
+        error.message,
+      );
+      return false;
+    }
+  }
 
   // [2.3] SEARCH INITIALIZATION
   function _initializeSearch(tour) {
@@ -1149,7 +1381,9 @@ window.tourSearchFunctions = (function () {
     }
 
     if (!_elements.container || !tour || !tour.mainPlayList) {
-      Logger.error("Search initialization failed: missing requirements");
+      Logger.warn(
+        "Search initialization failed: missing requirements - will retry on next button click",
+      );
       return;
     }
 
@@ -1192,13 +1426,7 @@ window.tourSearchFunctions = (function () {
 
     // Load Google Sheets data if enabled
     if (_config.googleSheets.useGoogleSheetData) {
-      dataPromises.push(
-        DataManager.loadGoogleSheetsData(_config).then((data) => {
-          Logger.info(`Loaded ${data.length} rows from Google Sheets`);
-        }).catch((error) => {
-          Logger.error("Error loading Google Sheets data:", error);
-        })
-      );
+      dataPromises.push(DataManager.loadGoogleSheetsData(_config));
     }
 
     // [2.3.7] When all data sources are loaded, prepare the search index
@@ -1219,47 +1447,17 @@ window.tourSearchFunctions = (function () {
         if (message && message.type === "historyUpdate") {
           const { action, history } = message.data || {};
 
-          // Handle different message actions
-          if (action === "clear") {
-            // Clear history in this window without broadcasting
-            if (DataManager.searchHistory._isStorageAvailable()) {
-              localStorage.removeItem(DataManager.searchHistory.storageKey);
-            }
-
-            // Update UI if search is visible
-            if (
+          // All search history functionality has been removed
+          // Just handle UI updates when needed
+          if ((action === "clear" || action === "update") && 
               _elements.container &&
-              _elements.container.classList.contains("visible")
-            ) {
-              const searchInput =
-                _elements.container.querySelector("#tourSearch");
-              if (searchInput && !searchInput.value.trim()) {
-                // Trigger search to update the empty search display
-                const event = new Event("input");
-                searchInput.dispatchEvent(event);
-              }
-            }
-          } else if (action === "save" && Array.isArray(history)) {
-            // Update local storage without broadcasting
-            if (DataManager.searchHistory._isStorageAvailable()) {
-              localStorage.setItem(
-                DataManager.searchHistory.storageKey,
-                JSON.stringify(history),
-              );
-            }
-
-            // Update UI if search is visible and showing history
-            if (
-              _elements.container &&
-              _elements.container.classList.contains("visible")
-            ) {
-              const searchInput =
-                _elements.container.querySelector("#tourSearch");
-              if (searchInput && !searchInput.value.trim()) {
-                // Trigger search to update the empty search display
-                const event = new Event("input");
-                searchInput.dispatchEvent(event);
-              }
+              _elements.container.classList.contains("visible")) {
+              
+            const searchInput = _elements.container.querySelector("#tourSearch");
+            if (searchInput && !searchInput.value.trim()) {
+              // Trigger search to update the display
+              const event = new Event("input");
+              searchInput.dispatchEvent(event);
             }
           }
         }
@@ -1994,8 +2192,7 @@ window.tourSearchFunctions = (function () {
                 }
               }
 
-              // Save search term to history
-              DataManager.searchHistory.save(searchTerm);
+              // Search history functionality has been removed
 
               // Update related content for this result item if enabled
               if (_config.relatedContent && _config.relatedContent.enabled) {
@@ -2108,16 +2305,211 @@ window.tourSearchFunctions = (function () {
 
   // [2.4] SEARCH VISIBILITY TOGGLE
   function _toggleSearch(show) {
+    // DIAGNOSTIC: Log state before toggle
+    logSearchContainerState(`Before toggle (show: ${show})`, show);
+    
     // Get UIManager from modules to avoid direct reference errors
     const UIManager = window.SearchProModules?.UIManager || {};
+    
     if (typeof UIManager.toggleSearch === "function") {
+      console.log(`🔍 Calling UIManager.toggleSearch(${show})...`);
       UIManager.toggleSearch(show, _elements);
+      console.log(`🔍 UIManager.toggleSearch(${show}) completed`);
     } else {
       (window.searchProDebugLogger || console).error(
         "UIManager.toggleSearch is not available",
       );
     }
+    
+    // Additional logic to ensure search results are properly reset when hiding
+    if (!show) {
+      const resultsContainer = _elements.container.querySelector(".search-results");
+      if (resultsContainer) {
+        console.log('🔍 Resetting results container display and classes');
+        console.log('🔍 Before reset - resultsContainer:', {
+          display: resultsContainer.style.display,
+          className: resultsContainer.className,
+          computed: window.getComputedStyle(resultsContainer).display
+        });
+        
+        resultsContainer.style.display = "none";
+        resultsContainer.classList.remove("visible", "no-results-bg");
+        
+        console.log('🔍 After reset - resultsContainer:', {
+          display: resultsContainer.style.display,
+          className: resultsContainer.className,
+          computed: window.getComputedStyle(resultsContainer).display
+        });
+      } else {
+        console.warn('🔍 resultsContainer not found when trying to reset!');
+      }
+    }
+
+    // DIAGNOSTIC: Log state after toggle with a delay to allow transitions
+    setTimeout(() => {
+      logSearchContainerState(`After toggle (show: ${show})`, show);
+    }, 400); // After CSS transition should complete
   }
+
+  // DIAGNOSTIC HELPER FUNCTION - Add this right before the _toggleSearch function
+  function logSearchContainerState(action, show = null) {
+    console.group(`🔍 Search Container State: ${action}`);
+
+    // Get all relevant elements
+    const searchContainer = document.getElementById("searchContainer");
+    const resultsContainer = searchContainer?.querySelector(".search-results");
+    const resultsSection = searchContainer?.querySelector(".results-section");
+
+    // Log basic state
+    console.log('Action:', action, 'Show:', show);
+    
+    // Check for container existence
+    console.log('searchContainer exists:', !!searchContainer);
+    console.log('resultsContainer exists:', !!resultsContainer);
+    console.log('resultsSection exists:', !!resultsSection);
+
+    if (searchContainer) {
+      // Log display/visibility state
+      const searchContainerStyle = window.getComputedStyle(searchContainer);
+      console.log('searchContainer display:', searchContainerStyle.display);
+      console.log('searchContainer visibility:', searchContainerStyle.visibility);
+      console.log('searchContainer background:', searchContainerStyle.background);
+      console.log('searchContainer classes:', searchContainer.className);
+      console.log('searchContainer style.display:', searchContainer.style.display);
+      
+      // Log dimensions and other critical styles
+      console.log('searchContainer computed styles:', {
+        width: searchContainerStyle.width,
+        height: searchContainerStyle.height,
+        position: searchContainerStyle.position,
+        top: searchContainerStyle.top,
+        left: searchContainerStyle.left,
+        zIndex: searchContainerStyle.zIndex,
+        opacity: searchContainerStyle.opacity,
+        transform: searchContainerStyle.transform,
+        transition: searchContainerStyle.transition,
+        boxShadow: searchContainerStyle.boxShadow,
+        backgroundColor: searchContainerStyle.backgroundColor
+      });
+    }
+
+    if (resultsContainer) {
+      // Log results container state
+      const resultsContainerStyle = window.getComputedStyle(resultsContainer);
+      console.log('resultsContainer display:', resultsContainerStyle.display);
+      console.log('resultsContainer visibility:', resultsContainerStyle.visibility);
+      console.log('resultsContainer background:', resultsContainerStyle.background);
+      console.log('resultsContainer classes:', resultsContainer.className);
+      console.log('resultsContainer style.display:', resultsContainer.style.display);
+    }
+
+    if (resultsSection) {
+      // Log results section content
+      console.log('resultsSection has content:', resultsSection.innerHTML.trim().length > 0);
+      console.log('resultsSection child count:', resultsSection.childElementCount);
+      if (resultsSection.innerHTML.length > 0) {
+        console.log('resultsSection first 100 chars:', resultsSection.innerHTML.substring(0, 100) + '...');
+      }
+    }
+
+    // Check for duplicate search containers
+    const allSearchContainers = document.querySelectorAll("#searchContainer");
+    console.log('Total search containers found:', allSearchContainers.length);
+    if (allSearchContainers.length > 1) {
+      console.warn('⚠️ DUPLICATE SEARCH CONTAINERS DETECTED!');
+      allSearchContainers.forEach((container, i) => {
+        console.log(`Container #${i+1} - isConnected:`, container.isConnected, 
+          'parent:', container.parentElement?.tagName,
+          'display:', window.getComputedStyle(container).display);
+      });
+    }
+
+    // After close, check elements at center of screen
+    if (action.includes("After") && show === false) {
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      try {
+        const elementsAtCenter = document.elementsFromPoint(centerX, centerY);
+        console.log('Elements at center point:', centerX, centerY);
+        elementsAtCenter.slice(0, 5).forEach((el, i) => {
+          console.log(`Element #${i+1}:`, {
+            tag: el.tagName,
+            id: el.id,
+            classes: el.className,
+            bg: window.getComputedStyle(el).background,
+            display: window.getComputedStyle(el).display,
+            zIndex: window.getComputedStyle(el).zIndex,
+            position: window.getComputedStyle(el).position
+          });
+        });
+      } catch (err) {
+        console.error('Error getting elementsFromPoint:', err);
+      }
+    }
+
+    console.groupEnd();
+  }
+
+  // Add an observer to monitor DOM changes to the search container
+  function setupSearchContainerObserver() {
+    try {
+      console.log('Setting up search container observer...');
+      const config = { attributes: true, childList: true, subtree: true };
+      
+      const callback = function(mutationsList, observer) {
+        for (const mutation of mutationsList) {
+          if (mutation.type === 'childList') {
+            console.log('🔍 DOM childList mutation in search container:', {
+              added: mutation.addedNodes.length,
+              removed: mutation.removedNodes.length,
+              target: mutation.target.tagName + (mutation.target.className ? '.' + mutation.target.className.split(' ').join('.') : '')
+            });
+            
+            if (mutation.addedNodes.length) {
+              Array.from(mutation.addedNodes).forEach((node, i) => {
+                if (node.nodeType === 1) { // Element node
+                  console.log(`Added node #${i+1}:`, {
+                    tag: node.tagName,
+                    id: node.id,
+                    classes: node.className
+                  });
+                }
+              });
+            }
+          }
+          else if (mutation.type === 'attributes') {
+            if (mutation.attributeName === 'style' || mutation.attributeName === 'class') {
+              const target = mutation.target;
+              console.log(`🔍 ${mutation.attributeName} changed for ${target.tagName + (target.id ? '#'+target.id : '')}`, {
+                style: target.style?.cssText,
+                class: target.className,
+                display: window.getComputedStyle(target).display,
+                visibility: window.getComputedStyle(target).visibility,
+                background: window.getComputedStyle(target).background
+              });
+            }
+          }
+        }
+      };
+      
+      // Wait for search container to be available
+      setTimeout(() => {
+        const searchContainer = document.getElementById('searchContainer');
+        if (searchContainer) {
+          const observer = new MutationObserver(callback);
+          observer.observe(searchContainer, config);
+          console.log('✅ Search container observer started');
+        } else {
+          console.warn('❌ Could not find search container for observer');
+        }
+      }, 1000);
+    } catch (err) {
+      console.error('Error setting up observer:', err);
+    }
+  }
+
+  // Call this after initialization to monitor DOM changes
+  setupSearchContainerObserver();
 
   // [2.5] PUBLIC API
   return {
@@ -2280,24 +2672,17 @@ window.tourSearchFunctions = (function () {
       }
     },
 
-    // [2.5.6] Search history management
-    searchHistory: {
-      get: function () {
-        return window.SearchProModules?.DataManager?.searchHistory.get() || [];
-      },
-      clear: function () {
-        return (
-          window.SearchProModules?.DataManager?.searchHistory.clear() || false
-        );
-      },
-    },
+    // [2.5.6] Search history management - Removed
   };
 })();
 
 // [3.0] GLOBAL EXPORTS
+// [3.0] API EXPOSURE MANAGEMENT
+// This function ensures the search API is properly exposed to the 3DVista tour system
 function ensureAPIExposed() {
   // If modules are loaded but API isn't fully initialized, bind them properly
   if (window.SearchProModules) {
+    // Expose elements reference if available
     if (
       !window.tourSearchFunctions.elements &&
       window.SearchProModules.elements
@@ -2305,7 +2690,7 @@ function ensureAPIExposed() {
       window.tourSearchFunctions.elements = window.SearchProModules.elements;
     }
 
-    // Map module functions to the global API required by 3DVista
+    // Map UI toggle function to the global API required by 3DVista
     if (
       window.SearchProModules.UIManager &&
       !window.tourSearchFunctions.toggleSearch
@@ -2314,19 +2699,44 @@ function ensureAPIExposed() {
         window.SearchProModules.UIManager.toggleSearch;
     }
 
+    // Map initialization function to the global API
     if (
-      window.SearchProModules.SearchEngine &&
-      !window.tourSearchFunctions.initializeSearch
+      !window.tourSearchFunctions.initializeSearch &&
+      window.SearchProModules.Lifecycle
+    ) {
+      // Use the new lifecycle management system
+      window.tourSearchFunctions.initializeSearch = function (tour) {
+        // Return a promise that resolves when initialization is complete
+        return window.SearchProModules.Lifecycle.initialize(tour);
+      };
+    }
+    
+    // Fallback if lifecycle management isn't available but SearchEngine is
+    if (
+      !window.tourSearchFunctions.initializeSearch &&
+      window.SearchProModules.SearchEngine
     ) {
       window.tourSearchFunctions.initializeSearch = function (tour) {
         window.searchListInitialized = true;
+        window.searchListInitiinitialized = true; // Maintain typo for compatibility
         if (window.SearchProModules.SearchEngine) {
           return window.SearchProModules.SearchEngine.initialize(tour);
         }
       };
     }
 
-    // Add any other necessary function mappings here
+    // Expose cleanup function if available
+    if (
+      window.SearchProModules.Lifecycle &&
+      !window.tourSearchFunctions.cleanup
+    ) {
+      window.tourSearchFunctions.cleanup = window.SearchProModules.Lifecycle.cleanup;
+    }
+    
+    // Add diagnostic function to help with debugging
+    if (!window.tourSearchFunctions.getSearchState && window.SearchProModules.Lifecycle) {
+      window.tourSearchFunctions.getSearchState = window.SearchProModules.Lifecycle.getState;
+    }
   }
 }
 
@@ -2336,6 +2746,9 @@ ensureAPIExposed();
 // [3.2] Also run after a slight delay to ensure modules have time to load if they haven't yet
 setTimeout(ensureAPIExposed, 100);
 
+// [3.3] Also run periodically to ensure API is always available
+setInterval(ensureAPIExposed, 2000);
+
 // [3.3] Create backwards compatibility layer
 window.searchFunctions = window.tourSearchFunctions;
 
@@ -2344,83 +2757,96 @@ window.openSearchPanelFallback = openSearchPanelFallback;
 
 // [4.0] FALLBACK FUNCTIONS
 function openSearchPanelFallback() {
+  const Logger = window.searchProDebugLogger || console;
+  
   try {
     // Try to ensure API is properly exposed before proceeding
     ensureAPIExposed();
 
     // Use cached element if available, otherwise query the DOM
     const searchContainer =
-      window.tourSearchFunctions && window.tourSearchFunctions.elements
-        ? window.tourSearchFunctions.elements.container
-        : document.getElementById("searchContainer");
+      window.tourSearchFunctions?.elements?.container ||
+      document.getElementById("searchContainer");
 
     if (!searchContainer) {
-      (window.searchProDebugLogger || console).error("Search panel not found.");
+      Logger.error("Search panel not found.");
       return;
     }
 
+    // Check if we need to initialize search first
+    const needsInitialization = !window.searchListInitialized;
+    
+    // Case 1: Full API is available through tourSearchFunctions
     if (
-      !window.tourSearchFunctions ||
-      typeof window.tourSearchFunctions.initializeSearch !== "function" ||
-      typeof window.tourSearchFunctions.toggleSearch !== "function"
+      window.tourSearchFunctions?.initializeSearch &&
+      window.tourSearchFunctions?.toggleSearch
     ) {
-      (window.searchProDebugLogger || console).error(
-        "Search functions not available yet. Trying to initialize...",
+      // Initialize if needed
+      if (needsInitialization) {
+        Logger.info("Initializing search via tourSearchFunctions API");
+        const tour = window.tour || window.tourInstance;
+        window.tourSearchFunctions.initializeSearch(tour);
+      }
+      
+      // Toggle search visibility
+      window.tourSearchFunctions.toggleSearch(
+        searchContainer.style.display !== "block"
       );
-
-      // Handle case where modules are loaded but not linked to the global API
-      if (window.SearchProModules && window.SearchProModules.UIManager) {
-        if (
-          !window.searchListInitialized &&
-          window.SearchProModules.SearchEngine
-        ) {
-          window.searchListInitialized = true;
-          window.SearchProModules.SearchEngine.initialize(window.tourInstance);
-        }
-
-        // Try to use module directly if global API isn't ready
-        window.SearchProModules.UIManager.toggleSearch(
-          searchContainer.style.display !== "block",
-        );
+      return;
+    }
+    
+    // Case 2: Lifecycle API is available
+    if (window.SearchProModules?.Lifecycle) {
+      if (needsInitialization) {
+        Logger.info("Initializing search via Lifecycle API");
+        const tour = window.tour || window.tourInstance;
+        
+        // Use the lifecycle API to initialize
+        window.SearchProModules.Lifecycle.initialize(tour)
+          .then(() => {
+            // After initialization, toggle search if UIManager is available
+            if (window.SearchProModules?.UIManager?.toggleSearch) {
+              window.SearchProModules.UIManager.toggleSearch(
+                searchContainer.style.display !== "block"
+              );
+            }
+          })
+          .catch(error => {
+            Logger.error("Failed to initialize search:", error);
+          });
         return;
-      } else {
-        (window.searchProDebugLogger || console).error(
-          "Search modules not fully loaded yet.",
+      }
+      
+      // Already initialized, just toggle
+      if (window.SearchProModules?.UIManager?.toggleSearch) {
+        window.SearchProModules.UIManager.toggleSearch(
+          searchContainer.style.display !== "block"
         );
         return;
       }
     }
+    
+    // Case 3: Direct module access as last resort
+    if (window.SearchProModules?.UIManager) {
+      if (needsInitialization && window.SearchProModules?.SearchEngine) {
+        Logger.info("Initializing search via direct module access");
+        window.searchListInitialized = true;
+        window.searchListInitiinitialized = true; // Maintain typo for compatibility
+        
+        const tour = window.tour || window.tourInstance;
+        window.SearchProModules.SearchEngine.initialize(tour);
+      }
 
-    if (!window.searchListInitialized) {
-      window.tourSearchFunctions.initializeSearch(window.tourInstance);
+      // Toggle search using UIManager directly
+      window.SearchProModules.UIManager.toggleSearch(
+        searchContainer.style.display !== "block"
+      );
+      return;
     }
-
-    window.tourSearchFunctions.toggleSearch(
-      searchContainer.style.display !== "block",
-    );
+    
+    // If we get here, we couldn't find any way to toggle search
+    Logger.error("Search modules not fully loaded yet. Cannot toggle search.");
   } catch (error) {
-    (window.searchProDebugLogger || console).error(
-      "Button action error - Check if initialization is complete:",
-      error,
-    );
+    Logger.error("Error in openSearchPanelFallback:", error);
   }
 }
-
-// Retry logic to ensure search functions are loaded
-function ensureSearchFunctionsLoaded(retries = 5, delay = 200) {
-  if (
-    window.tourSearchFunctions &&
-    typeof window.tourSearchFunctions.initializeSearch === "function"
-  ) {
-    Logger.info("Search functions loaded successfully.");
-    return true;
-  }
-
-  if (retries > 0) {
-    setTimeout(() => ensureSearchFunctionsLoaded(retries - 1, delay), delay);
-  } else {
-    Logger.error("Search functions failed to load after multiple attempts.");
-    // Optionally, notify the user or provide a fallback UI
-  }
-}
-ensureSearchFunctionsLoaded();

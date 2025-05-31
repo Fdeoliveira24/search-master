@@ -539,9 +539,6 @@ window.SearchProModules.DOMHandler = (function () {
                       <line x1="4" y1="12" x2="20" y2="12"></line>
                       <line x1="4" y1="17" x2="14" y2="17"></line>
                    </svg>`,
-      HotspotPanoramaOverlayTextImage: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                   <path d="M12 2l9 21H3L12 2z"></path>
-               </svg>`,
       Element: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                          <circle cx="12" cy="12" r="9"></circle>
                       </svg>`,
@@ -554,6 +551,65 @@ window.SearchProModules.DOMHandler = (function () {
 
     // Return the icon for the specified type, or a default if not found
     return icons[type] || icons["Element"];
+  }
+  // [6.0] Loading and Error State DOM Functions
+  function showLoadingState(message) {
+    const container = document.getElementById("searchContainer");
+    if (!container) return;
+
+    // Create loading indicator if it doesn't exist
+    let loadingEl = container.querySelector(".search-loading");
+    if (!loadingEl) {
+      loadingEl = document.createElement("div");
+      loadingEl.className = "search-loading";
+      loadingEl.innerHTML = `
+      <div class="search-loading-indicator"></div>
+      <div class="search-loading-text"></div>
+    `;
+      container.appendChild(loadingEl);
+    }
+
+    // Update message and show
+    loadingEl.querySelector(".search-loading-text").textContent =
+      message || "Loading...";
+    loadingEl.style.display = "flex";
+  }
+
+  function hideLoadingState() {
+    const container = document.getElementById("searchContainer");
+    if (!container) return;
+
+    const loadingEl = container.querySelector(".search-loading");
+    if (loadingEl) {
+      loadingEl.style.display = "none";
+    }
+  }
+
+  function showErrorState(title, message) {
+    const container = document.getElementById("searchContainer");
+    if (!container) return;
+
+    // Create error message if it doesn't exist
+    let errorEl = container.querySelector(".search-error-state");
+    if (!errorEl) {
+      errorEl = document.createElement("div");
+      errorEl.className = "search-error-state";
+      errorEl.innerHTML = `
+      <div class="search-error-icon">⚠️</div>
+      <div class="search-error-title"></div>
+      <div class="search-error-message"></div>
+    `;
+      container.appendChild(errorEl);
+    }
+
+    // Update message and show
+    errorEl.querySelector(".search-error-title").textContent = title || "Error";
+    errorEl.querySelector(".search-error-message").textContent =
+      message || "An error occurred";
+    errorEl.style.display = "flex";
+
+    // Hide loading state if visible
+    hideLoadingState();
   }
 
   // [6.2] Highlight matches in text
@@ -571,6 +627,80 @@ window.SearchProModules.DOMHandler = (function () {
     }
   }
 
+  /**
+   * Helper function to get display name for different search modes
+   */
+  function getModeDisplayName(mode) {
+    switch (mode) {
+      case "business":
+        return "Business Data";
+      case "googleSheets":
+        return "Google Sheets";
+      case "customThumbnails":
+        return "Custom Thumbnails";
+      default:
+        return "Tour";
+    }
+  }
+
+  // New DOM function to update UI for active mode
+  function updateInterfaceForMode(mode, config) {
+    const container = document.getElementById("searchContainer");
+    if (!container) return;
+
+    // 1. Remove old mode classes
+    container.classList.remove(
+      "mode-tour",
+      "mode-business",
+      "mode-google-sheets",
+      "mode-custom-thumbnails",
+    );
+
+    // 2. Add class for current mode
+    container.classList.add(`mode-${mode}`);
+
+    // 3. Set data attribute for CSS targeting
+    container.setAttribute("data-mode", mode);
+
+    // 4. Update search placeholder text based on mode
+    const input = container.querySelector("#tourSearch");
+    if (input) {
+      switch (mode) {
+        case "business":
+          input.placeholder =
+            config.businessData?.placeholder || "Search businesses...";
+          break;
+        case "googleSheets":
+          input.placeholder =
+            config.googleSheets?.placeholder || "Search data...";
+          break;
+        case "customThumbnails":
+          input.placeholder =
+            config.customThumbnails?.placeholder || "Search assets...";
+          break;
+        default:
+          input.placeholder = config.searchBar?.placeholder || "Search tour...";
+      }
+    }
+
+    // 5. Add mode indicator
+    const modeIndicator = document.createElement("div");
+    modeIndicator.className = "search-mode-indicator";
+    modeIndicator.textContent = getModeDisplayName(mode);
+
+    // Replace existing indicator if any
+    const existingIndicator = container.querySelector(".search-mode-indicator");
+    if (existingIndicator) {
+      existingIndicator.replaceWith(modeIndicator);
+    } else {
+      // Add after search field
+      const searchField = container.querySelector(".search-field");
+      if (searchField) {
+        searchField.insertAdjacentElement("afterend", modeIndicator);
+      }
+    }
+  }
+
   // [7.0] PUBLIC API
   return {
     loadCSS: _loadCSS,
@@ -583,5 +713,9 @@ window.SearchProModules.DOMHandler = (function () {
     getTypeIcon: _getTypeIcon,
     highlightMatch: _highlightMatch,
     SEARCH_MARKUP: SEARCH_MARKUP,
+    updateInterfaceForMode,
+    showLoadingState,
+    hideLoadingState,
+    showErrorState,
   };
 })();

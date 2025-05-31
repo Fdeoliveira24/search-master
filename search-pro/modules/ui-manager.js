@@ -280,23 +280,7 @@ window.SearchProModules.UIManager = (function () {
       performSearch,
     );
 
-    // [3.2.8] Bind history-related click events
-    EventManager.addListener(searchContainer, "click", function (e) {
-      // Handle history item clicks
-      if (e.target.closest(".history-item")) {
-        const term = e.target.closest(".history-item").textContent.trim();
-        if (searchInput) {
-          searchInput.value = term;
-          performSearch();
-        }
-      }
-
-      // Handle clear history button
-      if (e.target.closest(".clear-history")) {
-        window.SearchProModules.DataManager.searchHistory.clear();
-        performSearch();
-      }
-    });
+    // Search history-related click events have been removed
 
     // [3.2.9] Apply window resize handler for styling
     const resizeHandler = Utils.debounce(
@@ -489,33 +473,10 @@ window.SearchProModules.UIManager = (function () {
 
   // [5.0] SEARCH RESULTS RENDERING
 
-  // [5.1] Render search history
+  // [5.1] Render search history - Removed
   function _renderSearchHistory() {
-    const history = window.SearchProModules.DataManager.searchHistory.get();
-    if (!history.length) return "";
-
-    return `
-            <div class="search-history">
-                <div class="history-header">
-                    <h3>Recent Searches</h3>
-                    <button class="clear-history" aria-label="Clear search history">Clear</button>
-                </div>
-                <div class="history-items" role="list">
-                    ${history
-                      .map(
-                        (term) => `
-                        <button class="history-item" role="listitem">
-                            <svg class="history-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10s10-4.477 10-10S17.523 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8s8 3.589-8-8-8 3.589-8-8zm1-8h4v2h-6V7h2v5z"/>
-                            </svg>
-                            ${term}
-                        </button>
-                    `,
-                      )
-                      .join("")}
-                </div>
-            </div>
-        `;
+    // Search history functionality has been removed
+    return "";
   }
 
   // [5.2] Group and sort search results
