@@ -10,10 +10,13 @@ export default defineConfig([
     files: ["**/*.{js,mjs,cjs}"],
     languageOptions: {
       ecmaVersion: 2021,
-      sourceType: "module",
+      sourceType: "script", // Changed from "module" to "script" since your file isn't a module
       globals: {
         ...globals.browser,
+        Logger: "writable", // Added Logger as writable since it's defined in your code
         Fuse: "readonly",
+        // Papa: "readonly", // Added Papa for CSV parsing
+        TDV: "readonly", // Added TDV for tour functionality
         searchContainer: "readonly",
         _isMobileView: "readonly",
         getSchemaVersion: "readonly",
@@ -32,18 +35,20 @@ export default defineConfig([
       "no-empty": "warn",
       "no-dupe-class-members": "error",
       "no-case-declarations": "error",
+      "no-redeclare": "error", // This will catch your duplicate _triggerElement
       "prettier/prettier": "error",
-      "import/no-default-export": "error",
-      "import/no-named-as-default": "error",
-      "import/named": "error",
-      "import/namespace": "error",
-      "import/default": "error",
-      "import/export": "error",
-      "import/first": "error",
-      "import/exports-last": "error",
-      "import/no-duplicates": "error",
-      "import/no-mutable-exports": "error",
-      "import/no-unresolved": "error",
+      // Disable import rules since this isn't a module
+      "import/no-default-export": "off",
+      "import/no-named-as-default": "off",
+      "import/named": "off",
+      "import/namespace": "off",
+      "import/default": "off",
+      "import/export": "off",
+      "import/first": "off",
+      "import/exports-last": "off",
+      "import/no-duplicates": "off",
+      "import/no-mutable-exports": "off",
+      "import/no-unresolved": "off",
     },
   },
 ]);

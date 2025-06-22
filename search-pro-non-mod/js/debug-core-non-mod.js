@@ -1,13 +1,135 @@
 /*
 ====================================
 3DVista Enhanced Search Script
-Version: 1.0.5
-Last Updated: 05/29/2025 (Non-Modular working)
+Version: 2.0.1
+Last Updated: 06/03/2025 (Non-Modular working)
 Description: Search Pro Debug Utilities
  * Comprehensive diagnostics for search features including business data and Google Sheets integration
  */
 
 // [1.0] DEBUG CORE MODULE
+
+// [1.0.1] Centralized Logger Implementation
+window.Logger = {
+  level: 2, // 0=none, 1=error, 2=warn, 3=info, 4=debug
+  useColors: true,
+  prefix: "[Search]",
+
+  // Color styles for different log types
+  styles: {
+    debug: "color: #6c757d", // gray
+    info: "color: #17a2b8", // cyan
+    warn: "color: #ffc107", // yellow
+    error: "color: #dc3545", // red
+  },
+
+  // Format a message with optional prefix
+  _formatMessage: function (message, logType) {
+    // If message is already a string and has the prefix, don't add it again
+    if (typeof message === "string" && message.includes(this.prefix)) {
+      return message;
+    }
+    return `${this.prefix} ${logType}: ${message}`;
+  },
+
+  debug: function (message, ...args) {
+    if (this.level >= 4) {
+      if (this.useColors && window.chrome) {
+        console.debug(
+          `%c${this._formatMessage(message, "DEBUG")}`,
+          this.styles.debug,
+          ...args,
+        );
+      } else {
+        console.debug(this._formatMessage(message, "DEBUG"), ...args);
+      }
+    }
+  },
+
+  info: function (message, ...args) {
+    if (this.level >= 3) {
+      if (this.useColors && window.chrome) {
+        console.info(
+          `%c${this._formatMessage(message, "INFO")}`,
+          this.styles.info,
+          ...args,
+        );
+      } else {
+        console.info(this._formatMessage(message, "INFO"), ...args);
+      }
+    }
+  },
+
+  warn: function (message, ...args) {
+    if (this.level >= 2) {
+      if (this.useColors && window.chrome) {
+        console.warn(
+          `%c${this._formatMessage(message, "WARN")}`,
+          this.styles.warn,
+          ...args,
+        );
+      } else {
+        console.warn(this._formatMessage(message, "WARN"), ...args);
+      }
+    }
+  },
+
+  error: function (message, ...args) {
+    if (this.level >= 1) {
+      if (this.useColors && window.chrome) {
+        console.error(
+          `%c${this._formatMessage(message, "ERROR")}`,
+          this.styles.error,
+          ...args,
+        );
+      } else {
+        console.error(this._formatMessage(message, "ERROR"), ...args);
+      }
+    }
+  },
+
+  // Helper for initializing with different logging levels
+  setLevel: function (level) {
+    if (typeof level === "number" && level >= 0 && level <= 4) {
+      const oldLevel = this.level;
+      this.level = level;
+      this.info(`Logger level changed from ${oldLevel} to ${level}`);
+      return true;
+    }
+    return false;
+  },
+
+  // Helper to enable/disable colored output
+  setColorMode: function (useColors) {
+    this.useColors = !!useColors;
+    this.info(`Logger color mode set to ${this.useColors}`);
+  },
+
+  // Force a log regardless of level
+  _log: function (message, ...args) {
+    console.log(message, ...args);
+  },
+
+  // For structured logs like tables
+  table: function (data, columns) {
+    if (this.level >= 3) {
+      console.table(data, columns);
+    }
+  },
+
+  // For grouped logs
+  group: function (label) {
+    if (this.level >= 3) {
+      console.group(label);
+    }
+  },
+
+  groupEnd: function () {
+    if (this.level >= 3) {
+      console.groupEnd();
+    }
+  },
+};
 (() => {
   console.log("🔧 [Search Pro] Debug v2.0 Loaded");
 
@@ -916,41 +1038,59 @@ Description: Search Pro Debug Utilities
    */
   function debugBusinessMatching(enabled = true) {
     if (!enabled) return;
-    
+
     console.group("🔍 Business Data Matching Diagnostics");
-    
-    // Fix: Get business data from multiple possible sources
-    const searchFunctions = window.tourSearchFunctions || window.searchFunctions;
-    const businessData = 
-        window._businessData || 
-        (searchFunctions && typeof searchFunctions._getBusinessData === 'function' ? 
-          searchFunctions._getBusinessData() : 
-          (searchFunctions && searchFunctions._businessData ? 
-            searchFunctions._businessData : []));
-    
-    if (!businessData || businessData.length === 0) {
-      console.log("⚠️ No business data available");
+
+    // Fix: Get business data directly from the search functions module
+    const searchFunctions =
+      window.tourSearchFunctions || window.searchFunctions;
+    const businessData = window._businessData || []; // Try accessing global first
+
+    // If no global business data, try to get it from the search functions
+    const foundBusinessData =
+      businessData.length > 0
+        ? businessData
+        : searchFunctions &&
+            typeof searchFunctions._getBusinessData === "function"
+          ? searchFunctions._getBusinessData()
+          : searchFunctions && searchFunctions._businessData
+            ? searchFunctions._businessData
+            : [];
+
+    if (!foundBusinessData || foundBusinessData.length === 0) {
+      console.warn("⚠️ No business data available");
       console.log("Data sources checked:");
       console.log("  - window._businessData:", !!window._businessData);
-      console.log("  - searchFunctions._getBusinessData():", !!(searchFunctions && typeof searchFunctions._getBusinessData === 'function'));
-      console.log("  - searchFunctions._businessData:", !!(searchFunctions && searchFunctions._businessData));
+      console.log(
+        "  - searchFunctions._getBusinessData():",
+        !!(
+          searchFunctions &&
+          typeof searchFunctions._getBusinessData === "function"
+        ),
+      );
+      console.log(
+        "  - searchFunctions._businessData:",
+        !!(searchFunctions && searchFunctions._businessData),
+      );
     } else {
-      console.log(`✅ Found ${businessData.length} business data entries`);
+      console.log(`✅ Found ${foundBusinessData.length} business data entries`);
       // Display sample entries
-      console.groupCollapsed("📊 Business Data Entries");
-      businessData.slice(0, 5).forEach((entry, idx) => {
-        console.log(`${idx + 1}. ${entry.name || 'Unnamed'} (ID: ${entry.id || 'no-id'})`);
+      foundBusinessData.slice(0, 5).forEach((entry, index) => {
+        console.log(
+          `${index + 1}. ${entry.name || "Unnamed"} (ID: ${entry.id})`,
+        );
       });
-      console.groupEnd();
     }
-    
+
     // Log all panoramas in tour
     if (window.tour && window.tour.player) {
-      const panoramas = window.tour.player.getByClassName('Panorama');
+      const panoramas = window.tour.player.getByClassName("Panorama");
       console.groupCollapsed("🖼️ Tour Panoramas");
       panoramas.forEach((pano, idx) => {
-        const panoData = pano.get('data') || {};
-        console.log(`${idx + 1}. ${panoData.label || 'Unnamed'} (ID: ${pano.get('id')}, Tags: ${(panoData.tags || []).join(',')}`);
+        const panoData = pano.get("data") || {};
+        console.log(
+          `${idx + 1}. ${panoData.label || "Unnamed"} (ID: ${pano.get("id")}, Tags: ${(panoData.tags || []).join(",")}`,
+        );
       });
       console.groupEnd();
 
@@ -964,58 +1104,77 @@ Description: Search Pro Debug Utilities
 
         // Check each panorama for potential matches
         panoramas.forEach((pano, idx) => {
-          const panoData = pano.get('data') || {};
-          const panoId = pano.get('id');
-          const panoLabel = panoData.label || '';
+          const panoData = pano.get("data") || {};
+          const panoId = pano.get("id");
+          const panoLabel = panoData.label || "";
           const panoTags = panoData.tags || [];
 
           console.group(`Panorama: ${panoLabel || panoId}`);
 
           // Check all matching strategies
           let matched = false;
-          let matchStrategy = '';
+          let matchStrategy = "";
           let matchedEntry = null;
 
           // 1. Match by panorama name/label = business data ID
-          const nameMatch = businessData.find(entry =>
-            entry.id && panoLabel && entry.id.toLowerCase() === panoLabel.toLowerCase());
+          const nameMatch = businessData.find(
+            (entry) =>
+              entry.id &&
+              panoLabel &&
+              entry.id.toLowerCase() === panoLabel.toLowerCase(),
+          );
 
           if (nameMatch) {
             matched = true;
-            matchStrategy = 'Direct Name Match';
+            matchStrategy = "Direct Name Match";
             matchedEntry = nameMatch;
 
             // Remove from unmatched list
-            unmatchedBusinessData = unmatchedBusinessData.filter(entry => entry.id !== nameMatch.id);
+            unmatchedBusinessData = unmatchedBusinessData.filter(
+              (entry) => entry.id !== nameMatch.id,
+            );
           }
 
           // 2. Match by tag = business data ID
           if (!matched && panoTags.length) {
-            const tagMatch = businessData.find(entry =>
-              entry.id && panoTags.some(tag => tag.toLowerCase() === entry.id.toLowerCase()));
+            const tagMatch = businessData.find(
+              (entry) =>
+                entry.id &&
+                panoTags.some(
+                  (tag) => tag.toLowerCase() === entry.id.toLowerCase(),
+                ),
+            );
 
             if (tagMatch) {
               matched = true;
-              matchStrategy = 'Tag Match';
+              matchStrategy = "Tag Match";
               matchedEntry = tagMatch;
 
               // Remove from unmatched list
-              unmatchedBusinessData = unmatchedBusinessData.filter(entry => entry.id !== tagMatch.id);
+              unmatchedBusinessData = unmatchedBusinessData.filter(
+                (entry) => entry.id !== tagMatch.id,
+              );
             }
           }
 
           // 3. Match by ID containing business data ID as substring
           if (!matched) {
-            const idMatch = businessData.find(entry =>
-              entry.id && panoId && panoId.toLowerCase().includes(entry.id.toLowerCase()));
+            const idMatch = businessData.find(
+              (entry) =>
+                entry.id &&
+                panoId &&
+                panoId.toLowerCase().includes(entry.id.toLowerCase()),
+            );
 
             if (idMatch) {
               matched = true;
-              matchStrategy = 'ID Substring Match';
+              matchStrategy = "ID Substring Match";
               matchedEntry = idMatch;
 
               // Remove from unmatched list
-              unmatchedBusinessData = unmatchedBusinessData.filter(entry => entry.id !== idMatch.id);
+              unmatchedBusinessData = unmatchedBusinessData.filter(
+                (entry) => entry.id !== idMatch.id,
+              );
             }
           }
 
@@ -1023,13 +1182,15 @@ Description: Search Pro Debug Utilities
           if (matched) {
             matchedCount++;
             console.log(`✅ Matched using ${matchStrategy}`);
-            console.log(`Business data: ${matchedEntry.name} (${matchedEntry.id})`);
+            console.log(
+              `Business data: ${matchedEntry.name} (${matchedEntry.id})`,
+            );
           } else {
             console.log("❌ No match found");
             unmatchedPanoramas.push({
               id: panoId,
               label: panoLabel,
-              tags: panoTags
+              tags: panoTags,
             });
           }
 
@@ -1037,21 +1198,31 @@ Description: Search Pro Debug Utilities
         });
 
         // Summary
-        console.log(`📈 Summary: ${matchedCount}/${panoramas.length} panoramas matched (${Math.round(matchedCount/panoramas.length*100)}%)`);
+        console.log(
+          `📈 Summary: ${matchedCount}/${panoramas.length} panoramas matched (${Math.round((matchedCount / panoramas.length) * 100)}%)`,
+        );
 
         // Log unmatched items
         if (unmatchedPanoramas.length) {
-          console.groupCollapsed(`⚠️ ${unmatchedPanoramas.length} unmatched panoramas`);
+          console.groupCollapsed(
+            `⚠️ ${unmatchedPanoramas.length} unmatched panoramas`,
+          );
           unmatchedPanoramas.forEach((item, idx) => {
-            console.log(`${idx+1}. ${item.label || item.id} (Tags: ${item.tags.join(',')})`);
+            console.log(
+              `${idx + 1}. ${item.label || item.id} (Tags: ${item.tags.join(",")})`,
+            );
           });
           console.groupEnd();
         }
 
         if (unmatchedBusinessData.length) {
-          console.groupCollapsed(`⚠️ ${unmatchedBusinessData.length} unused business data entries`);
+          console.groupCollapsed(
+            `⚠️ ${unmatchedBusinessData.length} unused business data entries`,
+          );
           unmatchedBusinessData.forEach((item, idx) => {
-            console.log(`${idx+1}. ${item.name || 'Unnamed'} (ID: ${item.id})`);
+            console.log(
+              `${idx + 1}. ${item.name || "Unnamed"} (ID: ${item.id})`,
+            );
           });
           console.groupEnd();
         }
@@ -1068,32 +1239,144 @@ Description: Search Pro Debug Utilities
   // Add this to your debugBusinessMatching function:
   function testBusinessMatchForElement(elementData) {
     // Check if the main function exists and use it if available
-    if (typeof window.searchFunctions?.findBusinessMatch === 'function') {
+    if (typeof window.searchFunctions?.findBusinessMatch === "function") {
       return window.searchFunctions.findBusinessMatch(elementData);
     }
-    
+
     // Otherwise do a simplified matching check
     const businessData = window.searchFunctions?._getBusinessData?.() || [];
     if (!businessData.length) return null;
-    
+
     // Do basic matching
-    const name = elementData.name || '';
-    const id = elementData.id || '';
+    const name = elementData.name || "";
+    const id = elementData.id || "";
     const tags = elementData.tags || [];
-    
+
     // Try name match
     if (name) {
-      const match = businessData.find(entry => entry.id === name);
+      const match = businessData.find((entry) => entry.id === name);
       if (match) return match;
     }
-    
+
     // Try tag match
     for (const tag of tags) {
-      const match = businessData.find(entry => entry.id === tag);
+      const match = businessData.find((entry) => entry.id === tag);
       if (match) return match;
     }
-    
+
     return null;
+  }
+
+  /**
+   * Debug version of image path normalization function
+   * This helps diagnose issues with image paths in the business data
+   */
+  function debugImagePaths(businessData) {
+    console.group("🖼️ Image Path Normalization Debugging");
+
+    if (!businessData || !Array.isArray(businessData)) {
+      console.warn("No business data provided or invalid format");
+      console.groupEnd();
+      return [];
+    }
+
+    console.log(`Analyzing ${businessData.length} business data entries`);
+
+    const results = businessData.map((entry) => {
+      const result = { ...entry };
+
+      // Process imageUrl
+      if (result.imageUrl) {
+        console.log(
+          `[${result.id || "unnamed"}] Original imageUrl:`,
+          result.imageUrl,
+        );
+
+        // If it's already an absolute URL, return as is
+        if (
+          result.imageUrl.startsWith("http") ||
+          result.imageUrl.startsWith("//")
+        ) {
+          console.log(
+            `[${result.id || "unnamed"}] Using absolute imageUrl path:`,
+            result.imageUrl,
+          );
+        } else {
+          // Handle relative paths - ensure they're based on the right root
+          const baseUrl =
+            window.location.origin +
+            window.location.pathname.substring(
+              0,
+              window.location.pathname.lastIndexOf("/"),
+            );
+
+          // Remove any leading slash for clean joining
+          const cleanPath = result.imageUrl.startsWith("/")
+            ? result.imageUrl.substring(1)
+            : result.imageUrl;
+          const finalPath = `${baseUrl}/${cleanPath}`;
+
+          console.log(
+            `[${result.id || "unnamed"}] Normalized imageUrl path:`,
+            finalPath,
+          );
+          result.imageUrl = finalPath;
+        }
+      }
+
+      // Process localImage
+      if (result.localImage) {
+        console.log(
+          `[${result.id || "unnamed"}] Original localImage:`,
+          result.localImage,
+        );
+
+        // If it's already an absolute URL, return as is
+        if (
+          result.localImage.startsWith("http") ||
+          result.localImage.startsWith("//")
+        ) {
+          console.log(
+            `[${result.id || "unnamed"}] Using absolute localImage path:`,
+            result.localImage,
+          );
+        } else {
+          // Handle relative paths - ensure they're based on the right root
+          const baseUrl =
+            window.location.origin +
+            window.location.pathname.substring(
+              0,
+              window.location.pathname.lastIndexOf("/"),
+            );
+
+          // Remove any leading slash for clean joining
+          const cleanPath = result.localImage.startsWith("/")
+            ? result.localImage.substring(1)
+            : result.localImage;
+          const finalPath = `${baseUrl}/${cleanPath}`;
+
+          console.log(
+            `[${result.id || "unnamed"}] Normalized localImage path:`,
+            finalPath,
+          );
+          result.localImage = finalPath;
+        }
+      }
+
+      // Check if fallback from localImage to imageUrl should happen
+      if (!result.imageUrl && result.localImage) {
+        console.log(
+          `[${result.id || "unnamed"}] Using localImage as fallback for imageUrl:`,
+          result.localImage,
+        );
+        result.imageUrl = result.localImage;
+      }
+
+      return result;
+    });
+
+    console.groupEnd();
+    return results;
   }
 
   window.searchProDebug = {
@@ -1103,7 +1386,8 @@ Description: Search Pro Debug Utilities
     printDebugSummary,
     observeSearchPanel,
     extractTourTags,
-    debugBusinessMatching, // <-- Add this line
+    debugBusinessMatching,
+    debugImagePaths,
 
     // Additional utilities
     inspectSearchIndex: () => {
@@ -1295,6 +1579,486 @@ Description: Search Pro Debug Utilities
           reject(err);
         }
       });
+    },
+
+    // Add to debug-core-non-mod.js
+    listAllPanoramaTags: function () {
+      console.group("🏷️ All Panorama Tags");
+
+      try {
+        if (!window.tour || !window.tour.mainPlayList) {
+          console.error("Tour not available");
+          console.groupEnd();
+          return;
+        }
+
+        const items = window.tour.mainPlayList.get("items");
+        if (!items || !Array.isArray(items)) {
+          console.error("No panorama items found");
+          console.groupEnd();
+          return;
+        }
+
+        const panoramaData = [];
+
+        items.forEach((item, index) => {
+          try {
+            const media = item.get("media");
+            if (!media) return;
+
+            const data = media.get("data") || {};
+            const id = media.get("id") || "";
+            const label = data.label || "";
+            const subtitle = data.subtitle || "";
+            const tags = Array.isArray(data.tags) ? data.tags : [];
+
+            panoramaData.push({
+              index,
+              id,
+              label,
+              subtitle,
+              tags,
+              // Include additional stable identifiers
+              stableId: label || (tags.length > 0 ? tags[0] : ""),
+              // Compute a hash based on subtitle and tags for unnamed panoramas
+              hash: subtitle + ":" + tags.join(","),
+            });
+          } catch (e) {
+            console.error(`Error processing panorama at index ${index}:`, e);
+          }
+        });
+
+        console.table(panoramaData);
+
+        // List all unique tags for easy copy-pasting
+        const allTags = new Set();
+        panoramaData.forEach((p) => p.tags.forEach((tag) => allTags.add(tag)));
+
+        console.log("All unique tags found:", Array.from(allTags));
+
+        // Recommend tag strategies
+        panoramaData.forEach((p) => {
+          if (!p.label && p.tags.length > 0) {
+            console.log(
+              `Recommend using tags for unnamed panorama: ${p.tags.join(", ")}`,
+            );
+          }
+        });
+
+        console.groupEnd();
+        return panoramaData;
+      } catch (e) {
+        console.error("Error listing panorama tags:", e);
+        console.groupEnd();
+        return [];
+      }
+    },
+
+    // Add to debug-core-non-mod.js
+    generateBusinessDataTemplate: function () {
+      console.group("📋 Business Data Template Generator");
+
+      try {
+        const panoramaTags = listAllPanoramaTags();
+        if (!panoramaTags || panoramaTags.length === 0) {
+          console.error("No panorama data available");
+          console.groupEnd();
+          return;
+        }
+
+        const businessTemplate = panoramaTags.map((p) => {
+          // Create a suitable ID - use the label if available, otherwise the first tag or index
+          const id =
+            p.label || (p.tags.length > 0 ? p.tags[0] : `Panorama-${p.index}`);
+
+          // Create suitable matchTags - include the label and all tags
+          const matchTags = [];
+          if (p.label) matchTags.push(p.label);
+          p.tags.forEach((tag) => matchTags.push(tag));
+
+          return {
+            id,
+            name: p.label || `Panorama ${p.index + 1}`,
+            description:
+              p.subtitle || `Panorama with tags: ${p.tags.join(", ")}`,
+            matchTags: matchTags,
+            elementType: "Panorama",
+            // Include the original data for reference
+            originalData: {
+              tourIndex: p.index,
+              tourId: p.id,
+              tourTags: p.tags,
+            },
+          };
+        });
+
+        console.log("Generated business data template:");
+        console.log(JSON.stringify(businessTemplate, null, 2));
+
+        console.log(
+          "Copy the above JSON and remove any 'originalData' properties before using.",
+        );
+        console.groupEnd();
+        return businessTemplate;
+      } catch (e) {
+        console.error("Error generating business data template:", e);
+        console.groupEnd();
+        return [];
+      }
+    },
+
+    // Add this function to check if URLs are accessible
+    checkImageUrls: function () {
+      console.group("🖼️ Checking Business Data Image URLs");
+
+      const searchFunctions =
+        window.tourSearchFunctions || window.searchFunctions;
+      const businessData =
+        searchFunctions?._getBusinessData?.() || window._businessData || [];
+
+      if (!businessData || !businessData.length) {
+        console.warn("No business data available");
+        console.groupEnd();
+        return;
+      }
+
+      const imagesToCheck = businessData
+        .filter((entry) => entry.imageUrl)
+        .map((entry) => ({
+          id: entry.id,
+          name: entry.name || "Unnamed",
+          imageUrl: entry.imageUrl,
+        }));
+
+      console.log(`Found ${imagesToCheck.length} images to check`);
+
+      imagesToCheck.forEach((item) => {
+        const img = new Image();
+        img.onload = () =>
+          console.log(
+            `✅ Image for ${item.name} (${item.id}) loaded successfully: ${item.imageUrl}`,
+          );
+        img.onerror = () =>
+          console.error(
+            `❌ Image for ${item.name} (${item.id}) failed to load: ${item.imageUrl}`,
+          );
+        img.src = item.imageUrl;
+      });
+
+      console.groupEnd();
+    },
+
+    // Add this in the _renderResultItem function where the image/thumbnail is processed
+    _renderResultItem: (result, index) => {
+      const item = result.item;
+
+      // Get thumbnail URL - this logic should match your existing code
+      const thumbnailUrl =
+        item.imageUrl ||
+        item.businessData?.imageUrl ||
+        item.sheetsData?.imageUrl ||
+        "";
+
+      // Add this debug logging
+      console.log(
+        `[IMAGE DEBUG] Result ${result.item.label}: Image URL = ${thumbnailUrl}, Business Data? ${!!result.item.businessData}, Image in Business Data? ${result.item.businessData?.imageUrl ? "Yes" : "No"}`,
+      );
+    },
+
+    /**
+     * [1.12] COMPREHENSIVE GOOGLE SHEETS DIAGNOSTICS
+     * Complete diagnostic suite for Google Sheets integration
+     */
+    runGoogleSheetsDiagnostics: function () {
+      console.log("🔍 STARTING COMPLETE GOOGLE SHEETS DIAGNOSTICS...\n");
+
+      // 1. Basic Data Check
+      console.log("📊 1. BASIC DATA CHECK");
+      const searchFunctions =
+        window.tourSearchFunctions || window.searchFunctions;
+      const googleSheetsData = searchFunctions?._getGoogleSheetsData?.() || [];
+      console.log("Google Sheets Data:", googleSheetsData);
+      console.log("Data count:", googleSheetsData.length);
+
+      // 2. Configuration Check
+      console.log("\n⚙️ 2. CONFIGURATION CHECK");
+      const config = searchFunctions?.getConfig?.() || {};
+      console.log("Google Sheets Config:", config.googleSheets);
+
+      // 3. URL and Fetch Test
+      console.log("\n🌐 3. URL AND FETCH TEST");
+      const sheetsUrl = config.googleSheets?.googleSheetUrl;
+      console.log("Google Sheets URL being used:", sheetsUrl);
+
+      if (sheetsUrl) {
+        // Test the URL manually
+        fetch(sheetsUrl)
+          .then((response) => {
+            console.log(
+              "Google Sheets fetch response status:",
+              response.status,
+            );
+            console.log("Response headers:", [...response.headers.entries()]);
+            return response.text();
+          })
+          .then((text) => {
+            console.log("Google Sheets raw data length:", text.length);
+            console.log(
+              "Google Sheets data preview (first 500 chars):",
+              text.substring(0, 500),
+            );
+
+            // Parse first few lines to check structure
+            const lines = text.split("\n");
+            console.log("First 3 lines of CSV:");
+            lines.slice(0, 3).forEach((line, index) => {
+              console.log(`Line ${index + 1}:`, line);
+            });
+          })
+          .catch((error) => {
+            console.error("Google Sheets fetch error:", error);
+          });
+      }
+
+      // 4. Search Index Check
+      console.log("\n🔍 4. SEARCH INDEX CHECK");
+      const searchIndex = searchFunctions?.getSearchIndex?.() || [];
+      console.log("Search Index Data:", searchIndex);
+      console.log("Search Index Count:", searchIndex.length);
+
+      // Look for Google Sheets entries specifically
+      const sheetsEntries = searchIndex.filter((item) => item.sheetsData);
+      const standaloneSheets = searchIndex.filter(
+        (item) => item.sheetsData && !item.item,
+      );
+      const enhancedTourItems = searchIndex.filter(
+        (item) => item.sheetsData && item.item,
+      );
+
+      console.log(
+        "Google Sheets entries in search index:",
+        sheetsEntries.length,
+      );
+      console.log("Standalone Google Sheets entries:", standaloneSheets.length);
+      console.log(
+        "Tour items enhanced with Google Sheets:",
+        enhancedTourItems.length,
+      );
+
+      // 5. Sample Data Analysis
+      console.log("\n📋 5. SAMPLE DATA ANALYSIS");
+      if (googleSheetsData.length > 0) {
+        console.log("First Google Sheets entry:", googleSheetsData[0]);
+        console.log(
+          "Sample fields available:",
+          Object.keys(googleSheetsData[0]),
+        );
+
+        // Check for missing critical fields
+        const missingIds = googleSheetsData.filter((row) => !row.id).length;
+        const missingTags = googleSheetsData.filter((row) => !row.tag).length;
+        const missingNames = googleSheetsData.filter((row) => !row.name).length;
+
+        console.log("Data quality:");
+        console.log(`- Missing IDs: ${missingIds}/${googleSheetsData.length}`);
+        console.log(
+          `- Missing tags: ${missingTags}/${googleSheetsData.length}`,
+        );
+        console.log(
+          `- Missing names: ${missingNames}/${googleSheetsData.length}`,
+        );
+      }
+
+      // 6. Search Integration Test
+      console.log("\n🔍 6. SEARCH INTEGRATION TEST");
+      console.log("Testing search for Google Sheets entries...");
+
+      // Test searches for known Google Sheets entries
+      const testSearches = ["Room-1", "MyCoolTag_01", "Conference", "Facility"];
+      testSearches.forEach((term) => {
+        const searchResults = searchIndex.filter(
+          (item) =>
+            item.label && item.label.toLowerCase().includes(term.toLowerCase()),
+        );
+        console.log(`Search "${term}": ${searchResults.length} results`);
+        if (searchResults.length > 0) {
+          console.log("  Sample result:", {
+            label: searchResults[0].label,
+            type: searchResults[0].type,
+            hasSheets: !!searchResults[0].sheetsData,
+            imageUrl: searchResults[0].imageUrl,
+          });
+        }
+      });
+
+      // 7. Image URL Check
+      console.log("\n🖼️ 7. IMAGE URL CHECK");
+      const entriesWithImages = googleSheetsData.filter(
+        (item) => item.imageUrl,
+      );
+      console.log(
+        `Entries with images: ${entriesWithImages.length}/${googleSheetsData.length}`,
+      );
+      if (entriesWithImages.length > 0) {
+        console.log("Sample image URLs:");
+        entriesWithImages.slice(0, 3).forEach((item, index) => {
+          console.log(`  ${index + 1}. ${item.name}: ${item.imageUrl}`);
+        });
+      }
+
+      // 8. Module State Check
+      console.log("\n🔧 8. MODULE STATE CHECK");
+      console.log("Search initialized:", window.searchListInitialized);
+      console.log("Tour instance available:", !!window.tourInstance);
+      console.log("Search functions available:", !!searchFunctions);
+      console.log("Fuse.js available:", typeof Fuse !== "undefined");
+
+      // 9. Final Summary
+      setTimeout(() => {
+        console.log("\n📋 9. DIAGNOSTIC SUMMARY");
+        console.log("=".repeat(50));
+
+        const summary = {
+          "Google Sheets Enabled":
+            config.googleSheets?.useGoogleSheetData || false,
+          "Data Loaded": googleSheetsData.length > 0,
+          "Data Count": googleSheetsData.length,
+          "In Search Index": sheetsEntries.length,
+          "URL Working": "Check fetch results above",
+          "Images Available": entriesWithImages.length,
+        };
+
+        Object.entries(summary).forEach(([key, value]) => {
+          console.log(`${key}: ${value}`);
+        });
+
+        console.log(
+          "\n✅ Google Sheets diagnostics complete! Check results above for any issues.",
+        );
+      }, 2000);
+
+      return {
+        config: config.googleSheets,
+        dataCount: googleSheetsData.length,
+        indexCount: sheetsEntries.length,
+        imagesCount: entriesWithImages.length,
+        searchIndex: searchIndex,
+        googleSheetsData: googleSheetsData,
+      };
+    },
+
+    // Quick Google Sheets status check
+    getGoogleSheetsStatus: function () {
+      const searchFunctions =
+        window.tourSearchFunctions || window.searchFunctions;
+      const config = searchFunctions?.getConfig?.() || {};
+      const data = searchFunctions?._getGoogleSheetsData?.() || [];
+
+      return {
+        enabled: config.googleSheets?.useGoogleSheetData || false,
+        url: config.googleSheets?.googleSheetUrl || "none",
+        dataLoaded: data.length > 0,
+        recordCount: data.length,
+      };
+    },
+
+    // Test Google Sheets URL directly
+    testGoogleSheetsUrl: function (url) {
+      const testUrl =
+        url ||
+        window.searchFunctions?.getConfig?.()?.googleSheets?.googleSheetUrl;
+      if (!testUrl) {
+        console.error("No Google Sheets URL provided");
+        return;
+      }
+
+      console.log(`🔄 Testing: ${testUrl}`);
+      return fetch(testUrl)
+        .then((response) => {
+          console.log(`Status: ${response.status}`);
+          return response.text();
+        })
+        .then((text) => {
+          console.log(`Data length: ${text.length}`);
+          console.log(`Preview: ${text.substring(0, 200)}`);
+          return text;
+        })
+        .catch((error) => {
+          console.error("Fetch failed:", error);
+          throw error;
+        });
+    },
+
+    // Add to window.searchProDebug object
+    debugThumbnailBorders: function () {
+      console.group("🔍 THUMBNAIL BORDER DEBUG");
+
+      const searchFunctions =
+        window.tourSearchFunctions || window.searchFunctions;
+      const config = searchFunctions?.getConfig?.() || {};
+      const root = document.documentElement;
+
+      // Get config values
+      console.log("Configuration Values:");
+      console.log(
+        "  📝 Config borderRadius:",
+        config.thumbnailSettings?.borderRadius,
+      );
+      console.log(
+        "  📝 Config borderColor:",
+        config.thumbnailSettings?.borderColor,
+      );
+      console.log(
+        "  📝 Config borderWidth:",
+        config.thumbnailSettings?.borderWidth,
+      );
+
+      // Get CSS variables
+      console.log("CSS Variables Set:");
+      console.log(
+        "  🎨 --thumbnail-border-radius:",
+        root.style.getPropertyValue("--thumbnail-border-radius"),
+      );
+      console.log(
+        "  🎨 --thumbnail-border-color:",
+        root.style.getPropertyValue("--thumbnail-border-color"),
+      );
+      console.log(
+        "  🎨 --thumbnail-border-width:",
+        root.style.getPropertyValue("--thumbnail-border-width"),
+      );
+
+      // Check actual computed styles
+      setTimeout(() => {
+        const testElement = document.querySelector(".result-image");
+        if (testElement) {
+          const computedStyle = window.getComputedStyle(testElement);
+          console.log("Computed CSS on .result-image:");
+          console.log("  🖼️ border:", computedStyle.border);
+          console.log("  🖼️ border-color:", computedStyle.borderColor);
+          console.log("  🖼️ border-width:", computedStyle.borderWidth);
+          console.log("  🖼️ border-radius:", computedStyle.borderRadius);
+          console.log("  🖼️ Element HTML:", testElement.outerHTML);
+        } else {
+          console.log("No .result-image elements found yet");
+        }
+      }, 2000);
+
+      console.groupEnd();
+
+      // Return current settings for convenience
+      return {
+        fromConfig: {
+          radius: config.thumbnailSettings?.borderRadius,
+          color: config.thumbnailSettings?.borderColor,
+          width: config.thumbnailSettings?.borderWidth,
+        },
+        fromCSS: {
+          radius: root.style.getPropertyValue("--thumbnail-border-radius"),
+          color: root.style.getPropertyValue("--thumbnail-border-color"),
+          width: root.style.getPropertyValue("--thumbnail-border-width"),
+        },
+      };
     },
   };
 
@@ -1605,7 +2369,6 @@ Description: Search Pro Debug Utilities
       zIndex: getComputedStyle(el).zIndex,
     }));
   }
-
   /**
    * [1.7.3] Find all CSS rules affecting the search container
    */
@@ -1657,6 +2420,269 @@ Description: Search Pro Debug Utilities
     monitorSearchContainerVisibility;
   window.searchProDebug.getElementsAtScreenCenter = getElementsAtScreenCenter;
   window.searchProDebug.findRelevantCSSRules = findRelevantCSSRules;
+
+  console.log("=== TOUR STRUCTURE DEBUG ===");
+  console.log("window.tour:", window.tour);
+  console.log(
+    "window.tour keys:",
+    window.tour ? Object.keys(window.tour) : "undefined",
+  );
+
+  if (window.tour) {
+    console.log("window.tour.mainPlayList:", window.tour.mainPlayList);
+
+    // Check if it's using a different property name
+    const possiblePlaylistProps = [
+      "mainPlayList",
+      "playlist",
+      "mainPlaylist",
+      "playList",
+    ];
+    possiblePlaylistProps.forEach((prop) => {
+      if (window.tour[prop]) {
+        console.log(
+          `Found playlist at window.tour.${prop}:`,
+          window.tour[prop],
+        );
+      }
+    });
+
+    // Check if it's accessible via get method
+    if (typeof window.tour.get === "function") {
+      try {
+        const playlist = window.tour.get("mainPlayList");
+        console.log("window.tour.get('mainPlayList'):", playlist);
+      } catch (e) {
+        console.log("Error getting mainPlayList:", e.message);
+      }
+    }
+  }
+
+  // Check TDV structure
+  if (
+    window.TDV &&
+    window.TDV.PlayerAPI &&
+    typeof window.TDV.PlayerAPI.getCurrentPlayer === "function"
+  ) {
+    try {
+      const currentPlayer = window.TDV.PlayerAPI.getCurrentPlayer();
+      console.log("TDV.PlayerAPI.getCurrentPlayer():", currentPlayer);
+      if (currentPlayer && currentPlayer.mainPlayList) {
+        console.log(
+          "TDV player has mainPlayList:",
+          !!currentPlayer.mainPlayList,
+        );
+      }
+    } catch (e) {
+      console.log("Error calling TDV.PlayerAPI.getCurrentPlayer():", e.message);
+    }
+  } else {
+    console.log("TDV.PlayerAPI.getCurrentPlayer not available");
+  }
+
+  // === FIND THE ACTUAL PLAYLIST LOCATION ===
+  console.log("=== FINDING ACTUAL PLAYLIST ===");
+
+  // Check different possible playlist locations
+  const possiblePaths = [
+    "window.tour.player.mainPlayList",
+    'window.tour.player.get("mainPlayList")',
+    "window.tour.mainPlayList",
+    'window.tour.get("mainPlayList")',
+  ];
+
+  let foundPlaylist = null;
+  let foundPath = null;
+
+  // Method 1: Direct property access
+  try {
+    if (window.tour && window.tour.player && window.tour.player.mainPlayList) {
+      foundPlaylist = window.tour.player.mainPlayList;
+      foundPath = "window.tour.player.mainPlayList";
+      console.log("✓ Found playlist at: window.tour.player.mainPlayList");
+    }
+  } catch (e) {
+    console.log("✗ window.tour.player.mainPlayList failed:", e.message);
+  }
+
+  // Method 2: Player get method
+  if (!foundPlaylist) {
+    try {
+      if (
+        window.tour &&
+        window.tour.player &&
+        typeof window.tour.player.get === "function"
+      ) {
+        const playlist = window.tour.player.get("mainPlayList");
+        if (playlist) {
+          foundPlaylist = playlist;
+          foundPath = 'window.tour.player.get("mainPlayList")';
+          console.log(
+            "✓ Found playlist at: window.tour.player.get('mainPlayList')",
+          );
+        }
+      }
+    } catch (e) {
+      console.log(
+        "✗ window.tour.player.get('mainPlayList') failed:",
+        e.message,
+      );
+    }
+  }
+
+  // Method 3: Direct tour mainPlayList
+  if (!foundPlaylist) {
+    try {
+      if (window.tour && window.tour.mainPlayList) {
+        foundPlaylist = window.tour.mainPlayList;
+        foundPath = "window.tour.mainPlayList";
+        console.log("✓ Found playlist at: window.tour.mainPlayList");
+      }
+    } catch (e) {
+      console.log("✗ window.tour.mainPlayList failed:", e.message);
+    }
+  }
+
+  // Method 4: Tour get method
+  if (!foundPlaylist) {
+    try {
+      if (window.tour && typeof window.tour.get === "function") {
+        const playlist = window.tour.get("mainPlayList");
+        if (playlist) {
+          foundPlaylist = playlist;
+          foundPath = 'window.tour.get("mainPlayList")';
+          console.log("✓ Found playlist at: window.tour.get('mainPlayList')");
+        }
+      }
+    } catch (e) {
+      console.log("✗ window.tour.get('mainPlayList') failed:", e.message);
+    }
+  }
+
+  if (foundPlaylist) {
+    console.log(`\n=== PLAYLIST FOUND AT: ${foundPath} ===`);
+    console.log("Playlist object:", foundPlaylist);
+    console.log(
+      "Playlist methods:",
+      Object.getOwnPropertyNames(foundPlaylist).filter(
+        (prop) => typeof foundPlaylist[prop] === "function",
+      ),
+    );
+
+    // Try to get items
+    try {
+      let items = null;
+      if (typeof foundPlaylist.get === "function") {
+        items = foundPlaylist.get("items");
+        console.log("Items via get('items'):", items ? items.length : "null");
+      }
+      if (!items && foundPlaylist.items) {
+        items = foundPlaylist.items;
+        console.log(
+          "Items via .items property:",
+          items ? items.length : "null",
+        );
+      }
+
+      if (items && Array.isArray(items)) {
+        console.log("\n=== PLAYLIST ITEMS ===");
+        items.forEach((item, i) => {
+          try {
+            const itemClass = item.get ? item.get("class") : item.class;
+            const media = item.get ? item.get("media") : item.media;
+            const mediaClass =
+              media && media.get ? media.get("class") : media?.class;
+            const mediaId = media && media.get ? media.get("id") : media?.id;
+            console.log(
+              `Item ${i}: ${itemClass} -> ${mediaClass} (${mediaId})`,
+            );
+
+            if (itemClass === "Model3DPlayListItem") {
+              console.log(`  *** 3D MODEL AT INDEX ${i} ***`);
+              console.log(
+                `  Can set selectedIndex: ${typeof foundPlaylist.set === "function"}`,
+              );
+              console.log(
+                `  Can trigger item: ${typeof item.trigger === "function"}`,
+              );
+              console.log(
+                `  Can trigger media: ${media && typeof media.trigger === "function"}`,
+              );
+            }
+          } catch (e) {
+            console.warn(`Error analyzing item ${i}:`, e);
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Error getting items:", e);
+    }
+  } else {
+    console.error("❌ NO PLAYLIST FOUND AT ANY EXPECTED LOCATION");
+    console.log("\nDebugging tour structure:");
+    console.log("window.tour:", window.tour);
+    console.log("window.tour.player:", window.tour && window.tour.player);
+
+    // Deep search for anything that looks like a playlist
+    console.log("\n=== DEEP SEARCH FOR PLAYLIST-LIKE OBJECTS ===");
+
+    function findPlaylistLike(obj, path = "", depth = 0, visited = new Set()) {
+      if (depth > 3 || !obj || visited.has(obj)) return [];
+      visited.add(obj);
+
+      const results = [];
+
+      try {
+        // Check if this object has items
+        if (obj.items && Array.isArray(obj.items)) {
+          results.push(`${path}.items (${obj.items.length} items)`);
+        }
+
+        // Check if this object can get items
+        if (typeof obj.get === "function") {
+          try {
+            const items = obj.get("items");
+            if (Array.isArray(items)) {
+              results.push(`${path}.get('items') (${items.length} items)`);
+            }
+          } catch (e) {
+            // Ignore error
+          }
+        }
+
+        // Recursively search properties
+        for (const key in obj) {
+          if (
+            obj.hasOwnProperty &&
+            obj.hasOwnProperty(key) &&
+            key !== "parent"
+          ) {
+            try {
+              const value = obj[key];
+              if (value && typeof value === "object") {
+                const subResults = findPlaylistLike(
+                  value,
+                  path ? `${path}.${key}` : key,
+                  depth + 1,
+                  visited,
+                );
+                results.push(...subResults);
+              }
+            } catch (e) {
+              // Ignore
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`Error searching ${path}:`, e);
+      }
+
+      return results;
+    }
+
+    const playlistCandidates = findPlaylistLike(window.tour, "window.tour");
+    console.log("Playlist-like objects found:", playlistCandidates);
+  }
 })();
 
 // Log successful loading

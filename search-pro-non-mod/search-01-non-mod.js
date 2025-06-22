@@ -1,117 +1,99 @@
 /*
 ====================================
 3DVista Enhanced Search Script
-Version: 1.0.6
-Last Updated: 05/29/2025 (Non-Modular - working)
-Description:
-- Core search functionality for 3DVista tours with advanced element detection, filtering, and UI controls.
-- Optimized for both desktop and mobile.
-- Fully removes search history (recent searches) from both the backend logic and UI.
-- Implements robust diagnostics, improved error handling, and idempotent UI/DOM initialization.
-- Refactored to ensure all initialization, toggle, and search operations are safe, reliable, and compatible with 3DVista's API lifecycle.
-
-IMPORTANT:
-- The ONLY supported entry point for starting search is to call:
-      window.tourSearchFunctions.initializeSearch(window.tour)
-  AFTER the tour has loaded.
-- This script must remain compatible with iframe and cross-window tour communication.
-
+Version: 2.0.7
+Last Updated: 06/21/2025
+Description: 
 ====================================
 */
-// [1.0] GLOBAL/MODULE SCOPE VARIABLES
-// Simple Logger shim for environments without a custom Logger
-const Logger = {
-  info: console.info,
-  warn: console.warn,
-  error: console.error,
-  debug: console.debug,
-};
 
-// Placeholder markup for search container (replace with real markup as needed)
-const SEARCH_MARKUP = '<div id="searchContainer"></div>';
+// [1.0] Global/Module Scope Variables
+// [1.1] Logger Shim (fallback, replaced by debug-core-non-mod.js)
+if (!window.Logger) {
+  window.Logger = {
+    level: 2, // 0=none, 1=error, 2=warn, 3=info, 4=debug
+    useColors: true,
+    prefix: "[Search]",
 
-// Cross-window communication channel (BroadcastChannel API)
-let _crossWindowChannel = {
-  _channel: null,
-  channelName: "tourSearchChannel",
-  init() {
-    try {
-      if (typeof BroadcastChannel !== "undefined") {
-        this._channel = new BroadcastChannel(this.channelName);
-        Logger.info(
-          "BroadcastChannel initialized for cross-window communication",
-        );
-        return true;
-      } else {
-        Logger.warn("BroadcastChannel API not available");
-        return false;
+    _formatMessage: function (message, logType) {
+      if (typeof message === "string" && message.includes(this.prefix)) {
+        return message;
       }
-    } catch (error) {
-      Logger.error("Error initializing BroadcastChannel:", error);
+      return `${this.prefix} ${logType}: ${message}`;
+    },
+
+    debug: function (message, ...args) {
+      if (this.level >= 4) {
+        console.debug(this._formatMessage(message, "DEBUG"), ...args);
+      }
+    },
+
+    info: function (message, ...args) {
+      if (this.level >= 3) {
+        console.info(this._formatMessage(message, "INFO"), ...args);
+      }
+    },
+
+    warn: function (message, ...args) {
+      if (this.level >= 2) {
+        console.warn(this._formatMessage(message, "WARN"), ...args);
+      }
+    },
+
+    error: function (message, ...args) {
+      if (this.level >= 1) {
+        console.error(this._formatMessage(message, "ERROR"), ...args);
+      }
+    },
+
+    // [1.1.1] Method: setLevel()
+    setLevel: function (level) {
+      if (typeof level === "number" && level >= 0 && level <= 4) {
+        const oldLevel = this.level;
+        this.level = level;
+        this.info(`Logger level changed from ${oldLevel} to ${level}`);
+        return true;
+      }
       return false;
-    }
-  },
-  send(messageType, data) {
-    if (this._channel) {
-      this._channel.postMessage({ type: messageType, data });
-    }
-  },
-  listen(callback) {
-    if (this._channel) {
-      this._channel.onmessage = (event) => {
-        if (event.data && event.data.type) {
-          callback(event.data);
-        }
-      };
-    }
-  },
-  close() {
-    if (this._channel) {
-      this._channel.close();
-      this._channel = null;
-    }
-  },
-};
+    },
 
-// Cleanup for search event listeners
-let _unbindSearchEventListeners = function () {
-  try {
-    if (
-      window._searchEventCleanup &&
-      Array.isArray(window._searchEventCleanup)
-    ) {
-      window._searchEventCleanup.forEach((cleanupFn) => {
-        try {
-          cleanupFn();
-        } catch (e) {
-          Logger.debug("Event cleanup error:", e);
-        }
-      });
-      window._searchEventCleanup = [];
-    }
-
-    Logger.debug("Search event listeners cleaned up");
-    return true;
-  } catch (error) {
-    Logger.warn("Error during event cleanup:", error);
-    return false;
-  }
-};
-
-// Shared selection index for search results
+    // [1.1.2] Method: Compatibility stubs for Logger
+    setColorMode: function () {
+      return false;
+    },
+    table: function (data) {
+      if (this.level >= 3) console.table(data);
+    },
+    group: function (label) {
+      if (this.level >= 3) console.group(label);
+    },
+    groupCollapsed: function (label) {
+      if (this.level >= 3) console.groupCollapsed(label);
+    },
+    groupEnd: function () {
+      if (this.level >= 3) console.groupEnd();
+    },
+    _log: function (message, ...args) {
+      console.log(message, ...args);
+    },
+  };
+  console.info(
+    "[Search] Using fallback Logger shim until debug-core-non-mod.js loads",
+  );
+}
+const SEARCH_MARKUP = '<div id="searchContainer"></div>';
+// [1.2] Cross-Window Communication Channel
 let selectedIndex = -1;
 
-// [1.1] CORE INITIALIZATION FUNCTION
+// [2.0] Core Initialization Function
 function init() {
   if (window.searchListInitialized) {
-    // Already initialized, do nothing
     return;
   }
-
-  // [1.1.1] Internal initialization function
+  // [2.0.1] Method: internalInit()
   function internalInit() {
     if (window.searchListInitialized) return;
-    // Ensure idempotent DOM creation
+    // [2.0.1.1] Logic Block: Ensure idempotent DOM creation
     if (!document.getElementById("searchContainer")) {
       // Try to find the viewer element
       var viewer = document.getElementById("viewer");
@@ -125,7 +107,7 @@ function init() {
       temp.innerHTML = SEARCH_MARKUP.trim();
       viewer.appendChild(temp.firstChild);
     }
-    // Bind events and set up UI (idempotent)
+    // [2.0.1.2] Logic Block: Bind events and set up UI
     if (
       typeof window.tourSearchFunctions === "object" &&
       window.tourSearchFunctions._bindSearchEventListeners
@@ -151,82 +133,14 @@ function init() {
     internalInit();
   }
 }
-
-// Expose init as a public method for robust initialization
 window.tourSearchInit = init;
 
-// [2.0] SCRIPT LOADER AND INITIALIZATION
+// [3.0] Script Loader and Initialization
 (function () {
-  // [2.1] Forward declarations for functions/objects used before definition
-  let _crossWindowChannel = {
-    _channel: null,
-    channelName: "tourSearchChannel",
-    init() {
-      try {
-        if (typeof BroadcastChannel !== "undefined") {
-          this._channel = new BroadcastChannel(this.channelName);
-          Logger.info(
-            "BroadcastChannel initialized for cross-window communication",
-          );
-          return true;
-        } else {
-          Logger.warn("BroadcastChannel API not available");
-          return false;
-        }
-      } catch (error) {
-        Logger.error("Error initializing BroadcastChannel:", error);
-        return false;
-      }
-    },
-    send(messageType, data) {
-      if (this._channel) {
-        this._channel.postMessage({ type: messageType, data });
-      }
-    },
-    listen(callback) {
-      if (this._channel) {
-        this._channel.onmessage = (event) => {
-          if (event.data && event.data.type) {
-            callback(event.data);
-          }
-        };
-      }
-    },
-    close() {
-      if (this._channel) {
-        this._channel.close();
-        this._channel = null;
-      }
-    },
-  };
 
-  let _unbindSearchEventListeners = function () {
-    try {
-      if (
-        window._searchEventCleanup &&
-        Array.isArray(window._searchEventCleanup)
-      ) {
-        window._searchEventCleanup.forEach((cleanupFn) => {
-          try {
-            cleanupFn();
-          } catch (e) {
-            Logger.debug("Event cleanup error:", e);
-          }
-        });
-        window._searchEventCleanup = [];
-      }
-
-      Logger.debug("Search event listeners cleaned up");
-      return true;
-    } catch (error) {
-      Logger.warn("Error during event cleanup:", error);
-      return false;
-    }
-  };
-
-  // [2.2] Default Configuration
+  // [3.2] Default Configuration
   let _config = {
-    debugMode: false, // Master debug switch
+    debugMode: true, // *** Master debug switch
     maxResults: 20,
     minSearchLength: 2,
     showHotspots: true,
@@ -235,18 +149,17 @@ window.tourSearchInit = init;
     searchInHotspotTitles: true,
     searchInMediaTitles: true,
     searchInPanoramaTitles: true,
-    searchInHotspotDescriptions: false, 
-    searchInMediaDescriptions: false, 
+    searchInHotspotDescriptions: false,
+    searchInMediaDescriptions: false,
     mobileBreakpoint: 768,
     autoHide: {
       // Auto-hide search on mobile after selection
       mobile: true,
       desktop: false,
     },
-
   };
 
-  // [2.3] Utility to wait for tour readiness
+  // [3.3] Utility: Wait for Tour Readiness
   function initializeSearchWhenTourReady(callback, timeoutMs = 15000) {
     const start = Date.now();
     (function poll() {
@@ -271,7 +184,7 @@ window.tourSearchInit = init;
     })();
   }
 
-  // [2.4] Simple Logger Definition
+  // [3.4] Simple Logger Definition
   const Logger = {
     _log(level, ...args) {
       const prefix = `[SearchPro-${level.toUpperCase()}]`;
@@ -284,8 +197,8 @@ window.tourSearchInit = init;
               ? "color: orange;"
               : level === "info"
                 ? "color: blue;"
-                : "color: gray;"; // Default for debug
-        
+                : "color: gray;";
+
         if (
           level === "debug" &&
           (typeof _config === "undefined" || !_config.debugMode)
@@ -318,71 +231,71 @@ window.tourSearchInit = init;
     },
   };
 
-  // [2.5] Check if script is already loaded
+  // [3.5] Check if Script is Already Loaded
   if (window._searchProLoaded) {
     console.warn("Search Pro is already loaded. Skipping initialization.");
     return;
   }
-
-  // [2.6] Mark as loaded
+  
+  // [3.6] Mark as Loaded
   window._searchProLoaded = true;
 
-  // [2.7] Define search markup template
+  // [3.7] Define search markup template
   const SEARCH_MARKUP = `
-        <div id="searchContainer" class="search-container">
-            <!-- [2.7.1] Search input field -->
-            <div class="search-field">
-                <input type="text" id="tourSearch" placeholder="Search tour locations... (* for all)" autocomplete="off">
-                <div class="icon-container">
-                    <!-- [2.7.2] Search icon -->
-                    <div class="search-icon" aria-hidden="true">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        </svg>
-                    </div>
-                    <!-- [2.7.3] Clear search button -->
-                    <button class="clear-button" aria-label="Clear search">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
+    <div id="searchContainer" class="search-container">
+        <!-- Search input field -->
+        <div class="search-field">
+            <input type="text" id="tourSearch" placeholder="Search tour locations... (* for all)" autocomplete="off">
+            <div class="icon-container">
+                <!-- Search icon -->
+                <div class="search-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
                 </div>
-            </div>
-            <!-- [2.7.4] Search results container -->
-            <div class="search-results" role="listbox">
-                <div class="results-section">
-                </div>
-                <!-- [2.7.5] No results message -->
-                <div class="no-results" role="status" aria-live="polite">
-                    <div class="no-results-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M16 16s-1.5-2-4-2-4 2-4 2" />
-                            <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                            <line x1="15" y1="9" x2="15.01" y2="9"></line>
-                        </svg>
-                    </div>
-                    No matching results
-                </div>
+                <!-- Clear search button -->
+                <button class="clear-button" aria-label="Clear search" style="display: none;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
         </div>
-    `;
+        <!-- Search results container -->
+        <div class="search-results" role="listbox" style="display: none;">
+            <div class="results-section">
+            </div>
+            <!-- No results message -->
+            <div class="no-results" role="status" aria-live="polite" style="display: none;">
+                <div class="no-results-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M16 16s-1.5-2-4-2-4 2-4 2" />
+                        <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                        <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                    </svg>
+                </div>
+                No matching results
+            </div>
+        </div>
+    </div>
+`;
 
-  // [2.8] Dependency loader
+  // [3.8] Dependency Loader
   function loadDependencies() {
     return new Promise((resolve, reject) => {
-      // [2.8.1] Try to detect if Fuse.js is already loaded
+      // [3.8.1] Logic Block: Try to detect if Fuse.js is already loaded
       if (typeof Fuse !== "undefined") {
         console.log("Fuse.js already loaded, skipping load");
         resolve();
         return;
       }
 
-      // [2.8.2] Try to load local Fuse.js first
+      // [3.8.2] Logic Block: Try to load local Fuse.js first
       const fuseScript = document.createElement("script");
-      fuseScript.src = "search-pro-non-mod/fuse.js/dist/fuse.min.js"; // must have the correct folder location name
+      fuseScript.src = "search-pro-non-mod/fuse.js/dist/fuse.min.js"; // *** must have the correct folder location name
       fuseScript.async = true;
 
       fuseScript.onload = () => {
@@ -395,7 +308,7 @@ window.tourSearchInit = init;
           "Local Fuse.js failed to load, attempting to load from CDN...",
         );
 
-        // [2.8.3] Fallback to CDN
+        // [3.8.3] Logic Block: Fallback to CDN
         const fuseCDN = document.createElement("script");
         fuseCDN.src =
           "https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js";
@@ -421,7 +334,7 @@ window.tourSearchInit = init;
     });
   }
 
-  // [2.9] Optional debug tools loader
+  // [3.9] Optional Debug Tools Loader
   function loadDebugTools() {
     return new Promise((resolve) => {
       const debugEnabled =
@@ -434,7 +347,7 @@ window.tourSearchInit = init;
       }
 
       const debugScript = document.createElement("script");
-      debugScript.src = "search-pro-non-mod/js/debug-core-non-mod.js"; // Must have the correct folder location name
+      debugScript.src = "search-pro-non-mod/js/debug-core-non-mod.js"; // *** Must have the correct folder location name
       debugScript.async = true;
 
       debugScript.onload = () => {
@@ -451,10 +364,10 @@ window.tourSearchInit = init;
     });
   }
 
-  // [2.10] CSS Loader
+  // [3.10] CSS Loader
   function loadCSS() {
     return new Promise((resolve) => {
-      // Check if CSS is already loaded - make sure sure it has the correct folder location name
+      // *** Check if CSS is already loaded - make sure sure it has the correct folder location name
       if (
         document.querySelector(
           'link[href="search-pro-non-mod/css/search-01-non-mod.css"]',
@@ -466,7 +379,7 @@ window.tourSearchInit = init;
 
       const cssLink = document.createElement("link");
       cssLink.rel = "stylesheet";
-      cssLink.href = "search-pro-non-mod/css/search-01-non-mod.css"; // Make sure sure it has the correct folder location name
+      cssLink.href = "search-pro-non-mod/css/search-01-non-mod.css"; // *** Make sure sure it has the correct folder location name
 
       cssLink.onload = () => resolve();
       cssLink.onerror = () => {
@@ -478,7 +391,7 @@ window.tourSearchInit = init;
     });
   }
 
-  // [2.11] DOM initialization
+  // [3.11] DOM Initialization
   function initializeDom() {
     // Find the viewer element
     const viewer = document.getElementById("viewer");
@@ -505,7 +418,7 @@ window.tourSearchInit = init;
     return true;
   }
 
-  // [2.12] Main initialization function
+  // [3.12] Main Initialization Function
   async function initialize() {
     try {
       // Load CSS first
@@ -525,7 +438,7 @@ window.tourSearchInit = init;
       // Wait for the tour to be initialized
       const TourBinding = {
         initialized: false,
-        // [2.12.1] Main initialization function
+        // [3.12.1] Method: Main initialization function
         async init() {
           if (this.initialized) {
             Logger.info("Tour binding already initialized");
@@ -541,7 +454,7 @@ window.tourSearchInit = init;
             throw error;
           }
         },
-        // [2.12.2] Comprehensive tour binding with multiple strategies
+        // [3.12.2] Method: Comprehensive tour binding with multiple strategies
         async bindToTour() {
           // Strategy 1: Official 3DVista Events (Preferred)
           if (await this.tryEventBinding()) {
@@ -560,7 +473,7 @@ window.tourSearchInit = init;
           }
           throw new Error("All tour binding strategies failed");
         },
-        // [2.12.3] Strategy 1: Official 3DVista Events
+        // [3.12.3] Logic Block: Strategy 1: Official 3DVista Events
         tryEventBinding() {
           return new Promise((resolve, reject) => {
             try {
@@ -587,7 +500,7 @@ window.tourSearchInit = init;
             }
           });
         },
-        // [2.12.4] Strategy 2: Direct tour validation
+        // [3.12.4] Logic Block: Strategy 2: Direct tour validation
         tryDirectBinding() {
           return new Promise((resolve, reject) => {
             let attempts = 0;
@@ -607,7 +520,7 @@ window.tourSearchInit = init;
             poll();
           });
         },
-        // [2.12.5] Strategy 3: DOM-based detection
+        // [3.12.5] Logic Block: Strategy 3: DOM-based detection
         tryDOMBinding() {
           return new Promise((resolve, reject) => {
             // Watch for DOM changes that indicate tour is ready
@@ -637,24 +550,62 @@ window.tourSearchInit = init;
             }, 20000);
           });
         },
-        // [2.12.6] Comprehensive tour readiness check
+        // [3.12.6] Logic Block: Comprehensive tour readiness check
         isTourReady() {
           try {
-            return (
-              window.tour &&
-              window.tour.mainPlayList &&
-              typeof window.tour.mainPlayList.get === "function" &&
-              Array.isArray(window.tour.mainPlayList.get("items")) &&
-              window.tour.mainPlayList.get("items").length > 0 &&
-              window.tour.player &&
-              typeof window.tour.player.getByClassName === "function"
-            );
+            const tourCandidates = [
+              window.tour,
+              window.tourInstance,
+              window.TDV &&
+              window.TDV.PlayerAPI &&
+              typeof window.TDV.PlayerAPI.getCurrentPlayer === "function"
+                ? window.TDV.PlayerAPI.getCurrentPlayer()
+                : null,
+            ].filter(Boolean);
+
+            for (const tour of tourCandidates) {
+              if (!tour) continue;
+
+              // ENHANCED: Use utility functions for consistent playlist detection
+              const playlists = PlaylistUtils.getAllPlayLists(tour);
+
+              // Check if we have at least one valid playlist
+              if (!playlists.main && !playlists.root) continue;
+
+              // Validate basic player functionality
+              const hasPlayer =
+                tour.player && typeof tour.player.getByClassName === "function";
+              if (!hasPlayer) continue;
+
+              // Check initialization flag if available
+              try {
+                if (tour._isInitialized === false) {
+                  Logger.debug(
+                    "Tour not yet initialized (_isInitialized = false)",
+                  );
+                  continue;
+                }
+              } catch (e) {
+                // _isInitialized might not exist, that's okay
+              }
+
+              // If we get here, the tour appears ready
+              const mainCount = playlists.main?.get("items")?.length || 0;
+              const rootCount = playlists.root?.get("items")?.length || 0;
+              Logger.debug(
+                `Tour readiness validated: ${mainCount} main items, ${rootCount} root items`,
+              );
+              return true;
+            }
+
+            Logger.debug("No valid tour found in readiness check");
+            return false;
           } catch (error) {
             Logger.debug("Tour readiness check failed:", error);
             return false;
           }
         },
-        // [2.12.7] Validate tour and initialize search
+        // [3.12.7] Logic Block: Validate tour and initialize search
         async validateAndInitialize() {
           // Double-check everything is ready
           if (!this.isTourReady()) {
@@ -685,9 +636,9 @@ window.tourSearchInit = init;
     }
   }
 
-  // [2.13] TOUR LIFECYCLE BINDING
+  // [3.13] Tour Lifecycle Binding
   const TourLifecycle = {
-    // [2.13.1] Bind to tour lifecycle events
+    // [3.13.1] Method: Bind to Tour Lifecycle Events
     bindLifecycle() {
       if (window.tour && window.TDV && window.TDV.Tour) {
         // Bind to tour end event
@@ -705,7 +656,7 @@ window.tourSearchInit = init;
       });
     },
 
-    // [2.13.2] Complete cleanup
+    // [3.13.2] Method: Complete Cleanup
     cleanup() {
       try {
         // Clean up event listeners
@@ -727,10 +678,10 @@ window.tourSearchInit = init;
     },
   };
 
-  // [2.14] Initialize lifecycle binding
+  // [3.14] Initialize Lifecycle Binding
   TourLifecycle.bindLifecycle();
 
-  // [2.15] Start initialization when the DOM is ready
+  // [3.15] Start initialization when the DOM is ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initialize);
   } else {
@@ -738,7 +689,7 @@ window.tourSearchInit = init;
   }
 })();
 
-// [3.0] CSV PARSER UTILITY
+// [3.16] CSV PARSER UTILITY
 const Papa = {
   parse: function (csvString, options = {}) {
     const defaults = {
@@ -809,14 +760,91 @@ const Papa = {
     };
   },
 };
-
-// [4.0] MAIN SEARCH MODULE DEFINITION
+// [4.0] Main Search Module Definition
 window.tourSearchFunctions = (function () {
-  // [4.1] CENTRALIZED MODULE-LEVEL VARIABLES
-  // Core search state variables centralized at module level
+  // [4.1] Centralized Module-Level Variables
   let currentSearchTerm = "";
   let fuse = null;
   let performSearch = null; // Will be properly initialized in _initializeSearch
+
+  // [4.1.1] Submodule: Enhanced playlist detection utilities
+  const PlaylistUtils = {
+    /**
+     * Get the main playlist with comprehensive fallback detection
+     * @param {Object} tour - Tour instance to check
+     * @returns {Object|null} - Main playlist or null if not found
+     */
+    getMainPlayList(tour = null) {
+      const tourToCheck = tour || window.tour || window.tourInstance;
+
+      if (!tourToCheck) return null;
+
+      // Method 1: Direct mainPlayList access (most common)
+      if (
+        tourToCheck.mainPlayList?.get &&
+        tourToCheck.mainPlayList.get("items")?.length
+      ) {
+        Logger.debug("Found mainPlayList via direct access");
+        return tourToCheck.mainPlayList;
+      }
+
+      // Method 2: Search through all playlists for mainPlayList (robust fallback)
+      if (tourToCheck.player?.getByClassName) {
+        try {
+          const allPlaylists = tourToCheck.player.getByClassName("PlayList");
+          const found = allPlaylists.find(
+            (pl) => pl.get && pl.get("id") === "mainPlayList",
+          );
+          if (found?.get("items")?.length) {
+            Logger.debug("Found mainPlayList via getByClassName search");
+            return found;
+          }
+        } catch (e) {
+          Logger.debug("getByClassName search for mainPlayList failed:", e);
+        }
+      }
+
+      return null;
+    },
+
+    /**
+     * Get the root player playlist for enhanced 3D content
+     * @param {Object} tour - Tour instance to check
+     * @returns {Object|null} - Root player playlist or null if not found
+     */
+    getRootPlayerPlayList(tour = null) {
+      const tourToCheck = tour || window.tour || window.tourInstance;
+
+      if (!tourToCheck) return null;
+
+      try {
+        if (
+          tourToCheck.locManager?.rootPlayer?.mainPlayList?.get &&
+          tourToCheck.locManager.rootPlayer.mainPlayList.get("items")?.length
+        ) {
+          Logger.debug("Found rootPlayer mainPlayList");
+          return tourToCheck.locManager.rootPlayer.mainPlayList;
+        }
+      } catch (e) {
+        Logger.debug("Root player playlist access failed:", e);
+      }
+
+      return null;
+    },
+
+    /**
+     * Get both playlists with comprehensive detection
+     * @param {Object} tour - Tour instance to check
+     * @returns {Object} - Object containing main and root playlists
+     */
+    getAllPlayLists(tour = null) {
+      return {
+        main: this.getMainPlayList(tour),
+        root: this.getRootPlayerPlayList(tour),
+      };
+    },
+  };
+
   const keyboardManager = {
     init(searchContainer, searchInput, searchCallback) {
       if (!searchContainer || !searchInput) {
@@ -834,7 +862,7 @@ window.tourSearchFunctions = (function () {
         inputKeydown: null,
       };
 
-      // [4.1.1] updateSelection helper function
+      // [4.1.2.1] updateSelection helper function
       const updateSelection = (newIndex) => {
         resultItems = searchContainer.querySelectorAll(".result-item");
         if (!resultItems.length) return;
@@ -854,7 +882,7 @@ window.tourSearchFunctions = (function () {
         }
       };
 
-      // [4.1.2] Event handlers
+      // [4.1.2.2] Event handlers
       handlers.documentKeydown = function (e) {
         if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
@@ -866,7 +894,7 @@ window.tourSearchFunctions = (function () {
             e.preventDefault();
             if (searchInput.value.trim() !== "") {
               searchInput.value = "";
-              searchCallback(); // Use the passed callback instead of direct reference
+              searchCallback();
               selectedIndex = -1;
             } else {
               _toggleSearch(false);
@@ -933,24 +961,31 @@ window.tourSearchFunctions = (function () {
     },
   };
 
-  // [4.2] CONSTANTS AND CONFIGURATION
+  // [4.2] Constants and Configuration
   const BREAKPOINTS = {
     mobile: 768,
     tablet: 1024,
   };
+  // Add helper function
+function isMobileDevice() {
+  return (window.innerWidth <= BREAKPOINTS.MOBILE) || 
+         ('ontouchstart' in window) || 
+         (navigator.maxTouchPoints > 0);
+}
 
-  // [4.2.1] Configuration Builder Class for more maintainable options
+  // [4.2.0] Class: Configuration Builder for more maintainable options
   class ConfigBuilder {
     constructor() {
       // Default configuration
       this.config = {
         autoHide: {
+          // Auto-hide search on mobile after selection
           mobile: false,
-          desktop: true,
+          desktop: false,
         },
         mobileBreakpoint: BREAKPOINTS.mobile,
         minSearchChars: 2,
-        showTagsInResults: true,
+        showTagsInResults: false,
         elementTriggering: {
           initialDelay: 300,
           maxRetries: 3,
@@ -958,7 +993,31 @@ window.tourSearchFunctions = (function () {
           maxRetryInterval: 1000,
           baseRetryInterval: 300,
         },
-        // Add default display labels for group headers
+
+        animations: {
+          enabled: true,
+          duration: {
+            fast: 200,
+            normal: 300,
+            slow: 500,
+          },
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          searchBar: {
+            openDuration: 300,
+            closeDuration: 200,
+            scaleEffect: true,
+          },
+          results: {
+            fadeInDuration: 200,
+            slideDistance: 10,
+            staggerDelay: 50,
+          },
+          reducedMotion: {
+            respectPreference: true,
+            fallbackDuration: 100,
+          },
+        },
+        // Search display options
         displayLabels: {
           Panorama: "Panorama",
           Hotspot: "Hotspot",
@@ -970,39 +1029,43 @@ window.tourSearchFunctions = (function () {
           ProjectedImage: "Projected Image",
           Element: "Element",
           Business: "Business",
+          "3DHotspot": "3D Hotspot",
+          "3DModel": "3D Model",
+          "3DModelObject": "3D Model Object",
         },
+
         // Business data integration
         businessData: {
-          useBusinessData: true, // Enable business data JSON file integration true or false
+          useBusinessData: true, // *** Controls whether to use business data or not ***
           businessDataFile: "business.json",
           businessDataDir: "business-data",
-          matchField: "id", // Default
+          matchField: "id",
           fallbackMatchField: "tags",
-          replaceTourData: true, // If true, replaces tour data with business data
-
+          replaceTourData: true, // *** Controls whether to replace tour data with business data or not ***
+          includeStandaloneEntries: true, // *** Controls whether to include standalone entries from business data or not ***
           businessDataUrl: `${window.location.origin}${window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/"))}/search-pro-non-mod/business-data/business.json`,
         },
+
         // Google Sheets integration
         googleSheets: {
-          useGoogleSheetData: false,
+          useGoogleSheetData: false, // *** Controls whether to use Google Sheets data or not ***
+          includeStandaloneEntries: false, // *** Controls whether to include standalone entries from Google Sheets or not ***
           googleSheetUrl: "",
-          fetchMode: "csv", // 'csv' or 'json'
-          useAsDataSource: false, // If true, sheet is primary; if false, hybrid enhancement
+          fetchMode: "csv",
+          useAsDataSource: true, // *** Controls whether to use Google Sheets as the main data source or not ***
           csvOptions: {
             header: true,
-            skipEmptyLines: true,
-            dynamicTyping: true,
+            skipEmptyLines: true, // *** Controls whether to skip empty lines or not ***
+            dynamicTyping: true, // *** Controls whether to dynamically type values or not ***
           },
-          // Caching options
           caching: {
             enabled: false,
-            timeoutMinutes: 60, // Cache expiration time
+            timeoutMinutes: 60,
             storageKey: "tourGoogleSheetsData",
           },
-          // Progressive loading options
           progressiveLoading: {
             enabled: false,
-            initialFields: ["id", "tag", "name"], // Essential fields loaded first
+            initialFields: ["id", "tag", "name"],
             detailFields: [
               "description",
               "imageUrl",
@@ -1010,20 +1073,21 @@ window.tourSearchFunctions = (function () {
               "parentId",
             ],
           },
-          // Authentication options
           authentication: {
             enabled: false,
-            authType: "apiKey", // 'apiKey' or 'oauth'
+            authType: "apiKey",
             apiKey: "",
-            apiKeyParam: "key", // URL parameter name for API key
+            apiKeyParam: "key",
           },
         },
-        // [4.2.1.1] Thumbnail settings for search results
+        // Search display options
         thumbnailSettings: {
-          enableThumbnails: false, // True or False to Enable or disable custom thumbnails
-          thumbnailSize: "medium", // 'small', 'medium', 'large'
-          thumbnailSizePx: 48, // Resolved px value for quick use
-          borderRadius: 4, // in px
+          enableThumbnails: true,
+          thumbnailSize: "medium",
+          thumbnailSizePx: 120,
+          borderRadius: 4,
+          borderColor: "#9CBBFF",
+          borderWidth: 4,
           defaultImagePath: "./search-pro-non-mod/assets/default-thumbnail.jpg",
 
           defaultImages: {
@@ -1034,41 +1098,39 @@ window.tourSearchFunctions = (function () {
             Webframe: "./search-pro-non-mod/assets/webframe-default.jpg",
             Image: "./search-pro-non-mod/assets/image-default.jpg",
             Text: "./search-pro-non-mod/assets/text-default.jpg",
-            ProjectedImage:
-              "./search-pro-non-mod/assets/projected-image-default.jpg",
+            ProjectedImage: "./search-pro-non-mod/assets/projected-image-default.jpg",
             Element: "./search-pro-non-mod/assets/element-default.jpg",
             Business: "./search-pro-non-mod/assets/business-default.jpg",
+            "3DModel": "./search-pro-non-mod/assets/3d-model-default.jpg",
+            "3DHotspot": "./search-pro-non-mod/assets/3d-hotspot-default.jpg",
+            "3DModelObject": "./search-pro-non-mod/assets/3d-model-object-default.jpg",
             default: "./search-pro-non-mod/assets/default-thumbnail.jpg",
           },
-          alignment: "left", // 'center' or 'left' or 'right'
-          groupHeaderAlignment: "left", // 'left' or 'right'
-          groupHeaderPosition: "top", // 'top' or 'bottom'
+          alignment: "left", // "left" or "right"
+          groupHeaderAlignment: "left", // "left" or "right"
+          groupHeaderPosition: "top", // "top" or "bottom"
 
           showFor: {
-            panorama: true, // Show thumbnails for panoramas
-            hotspot: true, // Show thumbnails for hotspots
-            polygon: true, // Show thumbnails for polygons
-            video: true, // Show thumbnails for videos
-            webframe: true, // Show thumbnails for webframes
-            image: true, // Show thumbnails for images
-            text: true, // Show thumbnails for text
-            projectedImage: true, // Show thumbnails for projected images
-            element: true, // Show thumbnails for elements
-            business: true, // Show thumbnails for business elements
-            other: true, // Show thumbnails for other elements
+            panorama: true,
+            hotspot: true,
+            polygon: true,
+            video: true,
+            webframe: true,
+            image: true,
+            text: true,
+            projectedimage: true,
+            element: true,
+            business: true,
+            "3dmodel": true,
+            "3dhotspot": true,
+            "3dmodelobject": true,
+            other: true,
           },
         },
       };
     }
 
-    /* 
-    ===================================
-      FOR END USERS: DO NOT MODIFY SETTINGS BELOW THIS AREA
-      INSTEAD, USE searchFunctions.updateConfig() TO CHANGE SETTINGS
-      =================================== 
-    */
-
-    // [4.2.1.1] Set display options
+    // [4.2.0.1] Method: setDisplayOptions()
     setDisplayOptions(options) {
       this.config.display = {
         showGroupHeaders:
@@ -1101,7 +1163,7 @@ window.tourSearchFunctions = (function () {
       return this;
     }
 
-    // [4.2.1.2] Set content inclusion options
+    // [4.2.0.2] Method: setContentOptions()
     setContentOptions(options) {
       this.config.includeContent = {
         unlabeledWithSubtitles:
@@ -1117,6 +1179,10 @@ window.tourSearchFunctions = (function () {
             ? options.completelyBlank
             : true,
         elements: {
+          includePanoramas:
+            options?.elements?.includePanoramas !== undefined
+              ? options.elements.includePanoramas
+              : true,
           includeHotspots:
             options?.elements?.includeHotspots !== undefined
               ? options.elements.includeHotspots
@@ -1149,6 +1215,22 @@ window.tourSearchFunctions = (function () {
             options?.elements?.includeElements !== undefined
               ? options.elements.includeElements
               : true,
+          include3DHotspots:
+            options?.elements?.include3DHotspots !== undefined
+              ? options.elements.include3DHotspots
+              : true,
+          include3DModels:
+            options?.elements?.include3DModels !== undefined
+              ? options.elements.include3DModels
+              : true,
+          include3DModelObjects:
+            options?.elements?.include3DModelObjects !== undefined
+              ? options.elements.include3DModelObjects
+              : true,
+          includeBusiness:
+            options?.elements?.includeBusiness !== undefined
+              ? options.elements.includeBusiness
+              : true,
           skipEmptyLabels:
             options?.elements?.skipEmptyLabels !== undefined
               ? options.elements.skipEmptyLabels
@@ -1162,7 +1244,7 @@ window.tourSearchFunctions = (function () {
       return this;
     }
 
-    // [4.2.1.3] Set filter options
+    // [4.2.0.3] Method: setFilterOptions()
     setFilterOptions(options) {
       this.config.filter = {
         mode: options?.mode || "none",
@@ -1185,11 +1267,16 @@ window.tourSearchFunctions = (function () {
           allowedTags: options?.tagFiltering?.allowedTags || [],
           blacklistedTags: options?.tagFiltering?.blacklistedTags || [],
         },
+        uniqueNames: {
+          mode: options?.uniqueNames?.mode || "none",
+          allowedNames: options?.uniqueNames?.allowedNames || [],
+          blacklistedNames: options?.uniqueNames?.blacklistedNames || [],
+        },
       };
       return this;
     }
 
-    // [4.2.1.4] Set label options
+    // [4.2.0.4] Method: setLabelOptions()
     setLabelOptions(options) {
       this.config.useAsLabel = {
         subtitles: options?.subtitles !== undefined ? options.subtitles : true,
@@ -1205,46 +1292,70 @@ window.tourSearchFunctions = (function () {
       return this;
     }
 
-    // [4.2.1.5] Set appearance options
+    // [4.2.0.5] Method: setAppearanceOptions()
     setAppearanceOptions(options) {
+      if (!options) return this;
+
       this.config.appearance = {
         searchField: {
           borderRadius: {
-            topLeft: options?.searchField?.borderRadius?.topLeft || 35,
-            topRight: options?.searchField?.borderRadius?.topRight || 35,
-            bottomRight: options?.searchField?.borderRadius?.bottomRight || 35,
-            bottomLeft: options?.searchField?.borderRadius?.bottomLeft || 35,
+            topLeft: options.searchField?.borderRadius?.topLeft ?? 25,
+            topRight: options.searchField?.borderRadius?.topRight ?? 25,
+            bottomRight: options.searchField?.borderRadius?.bottomRight ?? 25,
+            bottomLeft: options.searchField?.borderRadius?.bottomLeft ?? 25,
           },
         },
         searchResults: {
           borderRadius: {
-            topLeft: options?.searchResults?.borderRadius?.topLeft || 5,
-            topRight: options?.searchResults?.borderRadius?.topRight || 5,
-            bottomRight: options?.searchResults?.borderRadius?.bottomRight || 5,
-            bottomLeft: options?.searchResults?.borderRadius?.bottomLeft || 5,
+            topLeft: options.searchResults?.borderRadius?.topLeft ?? 5,
+            topRight: options.searchResults?.borderRadius?.topRight ?? 5,
+            bottomRight: options.searchResults?.borderRadius?.bottomRight ?? 5,
+            bottomLeft: options.searchResults?.borderRadius?.bottomLeft ?? 5,
           },
         },
         colors: {
-          searchBackground: options?.colors?.searchBackground || "#f4f3f2",
-          searchText: options?.colors?.searchText || "#1a1a1a",
-          placeholderText: options?.colors?.placeholderText || "#94a3b8",
-          searchIcon: options?.colors?.searchIcon || "#94a3b8",
-          clearIcon: options?.colors?.clearIcon || "#94a3b8",
-          resultsBackground: options?.colors?.resultsBackground || "#ffffff",
-          groupHeaderColor: options?.colors?.groupHeaderColor || "#20293A",
-          groupCountColor: options?.colors?.groupCountColor || "#94a3b8",
-          resultHover: options?.colors?.resultHover || "#f0f0f0",
-          resultBorderLeft: options?.colors?.resultBorderLeft || "#dd0e0e",
-          resultText: options?.colors?.resultText || "#1e293b",
-          resultSubtitle: options?.colors?.resultSubtitle || "#64748b",
-          resultIconColor: options?.colors?.resultIconColor || "#6e85f7",
-          resultSubtextColor: options?.colors?.resultSubtextColor || "#000000",
+          searchBackground: options.colors?.searchBackground ?? "#f4f3f2",
+          searchText: options.colors?.searchText ?? "#1a1a1a",
+          placeholderText: options.colors?.placeholderText ?? "#94a3b8",
+          searchIcon: options.colors?.searchIcon ?? "#94a3b8",
+          clearIcon: options.colors?.clearIcon ?? "#94a3b8",
+          resultsBackground: options.colors?.resultsBackground ?? "#ffffff",
+          groupHeaderColor: options.colors?.groupHeaderColor ?? "#20293A",
+          groupCountColor: options.colors?.groupCountColor ?? "#94a3b8",
+          resultHover: options.colors?.resultHover ?? "#f0f0f0",
+          resultBorderLeft: options.colors?.resultBorderLeft ?? "#ebebeb",
+          resultText: options.colors?.resultText ?? "#1e293b",
+          resultSubtitle: options.colors?.resultSubtitle ?? "#64748b",
+          resultIconColor: options.colors?.resultIconColor ?? "#6e85f7",
+          resultSubtextColor: options.colors?.resultSubtextColor ?? "#000000",
+          // HIGHLIGHT CONFIGURATIONS
+          highlightBackground: options.colors?.highlightBackground ?? "#ffff00", 
+          highlightBackgroundOpacity: options.colors?.highlightBackgroundOpacity ?? 0.5,
+          highlightText: options.colors?.highlightText ?? "#000000",
+          highlightWeight: options.colors?.highlightWeight ?? "bold",
+          // TAG COLOR CONFIGURATIONS
+          tagBackground: options.colors?.tagBackground ?? "#e2e8f0",
+          tagText: options.colors?.tagText ?? "#475569",
+          tagBorder: options.colors?.tagBorder ?? "#cbd5e1",
+          tagHover: options.colors?.tagHover ?? "#d1d5db",
+        },
+        // TAG STYLING CONFIGURATIONS
+        tags: {
+          borderRadius: options.tags?.borderRadius ?? 12,
+          fontSize: options.tags?.fontSize ?? "12px",
+          padding: options.tags?.padding ?? "2px 8px",
+          margin: options.tags?.margin ?? "2px",
+          fontWeight: options.tags?.fontWeight ?? "500",
+          textTransform: options.tags?.textTransform ?? "none", // "none", "uppercase", "lowercase", "capitalize"
+          showBorder: options.tags?.showBorder ?? true,
+          borderWidth: options.tags?.borderWidth ?? "1px",
         },
       };
+
       return this;
     }
 
-    // [4.2.1.6] Set search bar options
+    // [4.2.0.6] Method: setSearchBarOptions()
     setSearchBarOptions(options) {
       this.config.searchBar = {
         placeholder: options?.placeholder || "Search...",
@@ -1284,6 +1395,7 @@ window.tourSearchFunctions = (function () {
               ? options.mobilePosition.bottom
               : "auto",
         },
+
         mobileOverrides: {
           enabled:
             options?.mobileOverrides?.enabled !== undefined
@@ -1313,20 +1425,12 @@ window.tourSearchFunctions = (function () {
                 ? options.mobileOverrides.visibility.hideThreshold
                 : 100,
           },
-          focusMode:
-            options?.mobileOverrides?.focusMode !== undefined
-              ? options.mobileOverrides.focusMode
-              : false,
-          fullScreenResults:
-            options?.mobileOverrides?.fullScreenResults !== undefined
-              ? options.mobileOverrides.fullScreenResults
-              : false,
         },
       };
       return this;
     }
 
-    // [4.2.1.7] Set general options
+    // [4.2.0.7] Method: setGeneralOptions()
     setGeneralOptions(options) {
       if (options?.autoHide !== undefined) {
         this.config.autoHide = options.autoHide;
@@ -1349,7 +1453,7 @@ window.tourSearchFunctions = (function () {
       return this;
     }
 
-    // [4.2.1.8] Set custom display labels
+    // [4.2.0.8] Method: setDisplayLabels()
     setDisplayLabels(options) {
       if (!options) return this;
 
@@ -1361,30 +1465,65 @@ window.tourSearchFunctions = (function () {
       return this;
     }
 
-    // [4.2.1.9] Set business data options
+    // [4.2.0.9] Method: setBusinessDataOptions()
     setBusinessDataOptions(options) {
-  if (!options) return this;
+      if (!options) return this;
 
-  this.config.businessData = {
-    useBusinessData:
-      options.useBusinessData !== undefined
-        ? options.useBusinessData
-        : true,
-    businessDataFile: options.businessDataFile || "business.json",
-    businessDataDir: options.businessDataDir || "business-data",
-    matchField: options.matchField || "id",
-    fallbackMatchField: options.fallbackMatchField || "tags",
-    // Fix: Add replaceTourData with proper default
-    replaceTourData: options.replaceTourData !== undefined 
-      ? options.replaceTourData 
-      : true,
-  };
-  return this;
-}
+      this.config.businessData = {
+        useBusinessData:
+          options.useBusinessData !== undefined
+            ? options.useBusinessData
+            : true,
+        businessDataFile: options.businessDataFile || "business.json",
+        businessDataDir: options.businessDataDir || "business-data",
+        matchField: options.matchField || "id",
+        fallbackMatchField: options.fallbackMatchField || "tags",
 
-    // [4.2.1.10] Set thumbnail settings
+        replaceTourData:
+          options.replaceTourData !== undefined
+            ? options.replaceTourData
+            : true,
+      };
+      return this;
+    }
+
+    // [4.2.0.10] Method: setThumbnailSettings()
     setThumbnailSettings(options) {
       if (!options) return this;
+
+      // Valid thumbnail types
+      const validTypes = [
+        "panorama",
+        "hotspot",
+        "polygon",
+        "video",
+        "webframe",
+        "image",
+        "text",
+        "projectedimage",
+        "element",
+        "business",
+        "3dmodel",
+        "3dhotspot",
+        "3dmodelobject",
+        "other",
+      ];
+
+      // Normalize showFor configuration
+      const normalizedShowFor = {};
+      if (options.showFor) {
+        Object.keys(options.showFor).forEach((key) => {
+          const normalizedKey = key.toLowerCase();
+          if (validTypes.includes(normalizedKey)) {
+            normalizedShowFor[normalizedKey] = options.showFor[key];
+          } else {
+            Logger.warn(
+              `[Config] Unknown thumbnail type: ${key}, mapping to 'other'`,
+            );
+            normalizedShowFor["other"] = options.showFor[key];
+          }
+        });
+      }
 
       // Resolve pixel size based on named size
       let sizePx = this.config.thumbnailSettings.thumbnailSizePx;
@@ -1408,13 +1547,16 @@ window.tourSearchFunctions = (function () {
         enableThumbnails:
           options.enableThumbnails !== undefined
             ? options.enableThumbnails
-            : false,
+            : true,
         thumbnailSize: options.thumbnailSize || "medium",
         thumbnailSizePx: sizePx,
         borderRadius:
           options.borderRadius !== undefined ? options.borderRadius : 4,
+        borderColor: options.borderColor || "#9CBBFF",
+        borderWidth: options.borderWidth || 2,
         defaultImagePath:
-          options.defaultImagePath || "assets/default-thumbnail.png",
+          options.defaultImagePath ||
+          "./search-pro-non-mod/assets/default-thumbnail.jpg",
 
         defaultImages: options.defaultImages || {
           Panorama: "./search-pro-non-mod/assets/default-thumbnail.jpg",
@@ -1428,35 +1570,86 @@ window.tourSearchFunctions = (function () {
             "./search-pro-non-mod/assets/projected-image-default.jpg",
           Element: "./search-pro-non-mod/assets/element-default.jpg",
           Business: "./search-pro-non-mod/assets/business-default.jpg",
+          "3DModel": "./search-pro-non-mod/assets/3d-model-default.jpg",
+          "3DHotspot": "./search-pro-non-mod/assets/3d-hotspot-default.jpg",
           default: "./search-pro-non-mod/assets/default-thumbnail.jpg",
         },
+
         alignment: options.alignment === "right" ? "right" : "left",
-        groupHeaderAlignment: ["left", "right", "center"].includes(
+        groupHeaderAlignment: ["left", "right"].includes(
           options.groupHeaderAlignment,
         )
           ? options.groupHeaderAlignment
-          : "left", // Controls alignment of group headers
+          : "left",
         groupHeaderPosition:
-          options.groupHeaderPosition === "bottom" ? "bottom" : "top", // Controls position of group headers
+          options.groupHeaderPosition === "bottom" ? "bottom" : "top",
 
+        // **FIX: Use normalized showFor with fallbacks**
         showFor: {
-          panorama: true, // Show thumbnails for panoramas
-          hotspot: true, // Show thumbnails for hotspots
-          polygon: true, // Show thumbnails for polygons
-          video: true, // Show thumbnails for videos
-          webframe: true, // Show thumbnails for webframes
-          image: true, // Show thumbnails for images
-          text: true, // Show thumbnails for text
-          projectedImage: true, // Show thumbnails for projected images
-          element: true, // Show thumbnails for elements
-          business: true, // Show thumbnails for business elements
-          other: true, // Show thumbnails for other elements
+          panorama:
+            normalizedShowFor.panorama !== undefined
+              ? normalizedShowFor.panorama
+              : true,
+          hotspot:
+            normalizedShowFor.hotspot !== undefined
+              ? normalizedShowFor.hotspot
+              : true,
+          polygon:
+            normalizedShowFor.polygon !== undefined
+              ? normalizedShowFor.polygon
+              : true,
+          video:
+            normalizedShowFor.video !== undefined
+              ? normalizedShowFor.video
+              : true,
+          webframe:
+            normalizedShowFor.webframe !== undefined
+              ? normalizedShowFor.webframe
+              : true,
+          image:
+            normalizedShowFor.image !== undefined
+              ? normalizedShowFor.image
+              : true,
+          text:
+            normalizedShowFor.text !== undefined
+              ? normalizedShowFor.text
+              : true,
+          projectedimage:
+            normalizedShowFor.projectedimage !== undefined
+              ? normalizedShowFor.projectedimage
+              : true,
+          element:
+            normalizedShowFor.element !== undefined
+              ? normalizedShowFor.element
+              : true,
+          business:
+            normalizedShowFor.business !== undefined
+              ? normalizedShowFor.business
+              : true,
+          "3dmodel":
+            normalizedShowFor["3dmodel"] !== undefined
+              ? normalizedShowFor["3dmodel"]
+              : true,
+          "3dhotspot":
+            normalizedShowFor["3dhotspot"] !== undefined
+              ? normalizedShowFor["3dhotspot"]
+              : true,
+          "3dmodelobject":
+            normalizedShowFor["3dmodelobject"] !== undefined
+              ? normalizedShowFor["3dmodelobject"]
+              : true,
+          other:
+            normalizedShowFor.other !== undefined
+              ? normalizedShowFor.other
+              : true,
         },
       };
+
       return this;
     }
 
-    // [4.2.1.11] Set Google Sheets integration options
+    
+    // [4.2.0.11] Method: setGoogleSheetsOptions()
     setGoogleSheetsOptions(options) {
       if (!options) return this;
 
@@ -1466,7 +1659,12 @@ window.tourSearchFunctions = (function () {
             ? options.useGoogleSheetData
             : false,
         googleSheetUrl: options.googleSheetUrl || "",
-        fetchMode: options.fetchMode || "csv", // 'csv' or 'json'
+        useLocalCSV:
+          options.useLocalCSV !== undefined ? options.useLocalCSV : false,
+        localCSVFile: options.localCSVFile || "search-data.csv",
+        localCSVDir: options.localCSVDir || "business-data",
+        localCSVUrl: options.localCSVUrl || "",
+        fetchMode: options.fetchMode || "csv",
         useAsDataSource:
           options.useAsDataSource !== undefined
             ? options.useAsDataSource
@@ -1527,13 +1725,88 @@ window.tourSearchFunctions = (function () {
       return this;
     }
 
-    // [4.2.1.12] Build method to return completed config
+    // [4.2.0.12] Method: setAnimationOptions()
+    setAnimationOptions(options) {
+      if (!options) return this;
+
+      // Ensure we have a base animations object
+      if (!this.config.animations) {
+        this.config.animations = {};
+      }
+
+      this.config.animations = {
+        enabled: options.enabled !== undefined ? options.enabled : true,
+        duration: {
+          fast: options.duration?.fast || 200,
+          normal: options.duration?.normal || 300,
+          slow: options.duration?.slow || 500,
+        },
+        easing: options.easing || "cubic-bezier(0.22, 1, 0.36, 1)",
+        searchBar: {
+          openDuration: options.searchBar?.openDuration || 300,
+          closeDuration: options.searchBar?.closeDuration || 200,
+          scaleEffect: options.searchBar?.scaleEffect !== false,
+        },
+        results: {
+          fadeInDuration: options.results?.fadeInDuration || 200,
+          slideDistance: options.results?.slideDistance || 10,
+          staggerDelay: options.results?.staggerDelay || 50,
+        },
+        reducedMotion: {
+          respectPreference: options.reducedMotion?.respectPreference !== false,
+          fallbackDuration: options.reducedMotion?.fallbackDuration || 100,
+        },
+      };
+
+      console.log("🎬 Animation options set:", this.config.animations);
+      return this;
+    }
+
+    // [4.2.0.13] Method: setSearchOptions()
+    setSearchOptions(options) {
+      if (!options) return this;
+
+      this.config.searchSettings = {
+        // Field weights for search priority
+        fieldWeights: {
+          label: options.fieldWeights?.label ?? 1.0, // Primary item name
+          businessName: options.fieldWeights?.businessName ?? 0.9, // Business data name
+          subtitle: options.fieldWeights?.subtitle ?? 0.8, // Item description
+          businessTag: options.fieldWeights?.businessTag ?? 0.7, // Business tags
+          tags: options.fieldWeights?.tags ?? 0.6, // Regular tags
+          parentLabel: options.fieldWeights?.parentLabel ?? 0.3, // Parent item name
+        },
+
+        // Fuse.js behavior settings
+        behavior: {
+          threshold: options.behavior?.threshold ?? 0.4, // 0.0 = exact, 1.0 = match anything
+          distance: options.behavior?.distance ?? 40, // Character distance for matches
+          minMatchCharLength: options.behavior?.minMatchCharLength ?? 1, // Min chars to match
+          useExtendedSearch: options.behavior?.useExtendedSearch ?? true, // Enable operators like 'word
+          ignoreLocation: options.behavior?.ignoreLocation ?? true, // Don't prioritize start of text
+          location: options.behavior?.location ?? 0, // Position to start search
+          includeScore: options.behavior?.includeScore ?? true, // Include match scores
+        },
+
+        // Boost values for different item types
+        boostValues: {
+          businessMatch: options.boostValues?.businessMatch ?? 2.0, // Items with business data
+          sheetsMatch: options.boostValues?.sheetsMatch ?? 2.5, // Items with sheets data
+          labeledItem: options.boostValues?.labeledItem ?? 1.5, // Items with labels
+          unlabeledItem: options.boostValues?.unlabeledItem ?? 1.0, // Items without labels
+          childElement: options.boostValues?.childElement ?? 0.8, // Child elements (hotspots)
+        },
+      };
+
+      return this;
+    }
+    // [4.2.0.14] Method: build()
     build() {
       return this.config;
     }
   }
 
-  // [4.2.2] Create default configuration
+  // [4.3] Logic Block: Create Default Configuration
   let _config = new ConfigBuilder()
     .setDisplayOptions({})
     .setContentOptions({})
@@ -1541,12 +1814,15 @@ window.tourSearchFunctions = (function () {
     .setLabelOptions({})
     .setAppearanceOptions({})
     .setSearchBarOptions({})
-    .setBusinessDataOptions({}) // Initialize with default business data settings
-    .setGoogleSheetsOptions({}) // Initialize with default Google Sheets settings
-    .setDisplayLabels({}) // Initialize with default display labels
+    .setBusinessDataOptions({})
+    .setGoogleSheetsOptions({})
+    .setAnimationOptions({})
+    .setSearchOptions({})
+    .setDisplayLabels({})
+    .setThumbnailSettings({})
     .build();
 
-  // [4.3] LOGGING UTILITIES
+  // [4.4] Submodule: LOGGING UTILITIES
   const Logger = {
     // Set this to control logging level: 0=debug, 1=info, 2=warn, 3=error, 4=none
     level: 2,
@@ -1568,13 +1844,13 @@ window.tourSearchFunctions = (function () {
     },
   };
 
-  // [4.4] Module state variables
+  // [4.5] Logic Block: Module State Variables
   let _initialized = false;
   let keyboardCleanup = null;
   let _businessData = [];
   let _googleSheetsData = [];
 
-  // [4.5] DOM ELEMENT CACHE
+  // [4.6] Logic Block: DOM ELEMENT CACHE
   const _elements = {
     container: null,
     input: null,
@@ -1583,7 +1859,7 @@ window.tourSearchFunctions = (function () {
     searchIcon: null,
   };
 
-  // [4.6] CROSS-WINDOW COMMUNICATION
+  // [4.7] Submodule: CROSS-WINDOW COMMUNICATION
   _crossWindowChannel = {
     // Channel instance
     _channel: null,
@@ -1591,7 +1867,7 @@ window.tourSearchFunctions = (function () {
     // Channel name
     channelName: "tourSearchChannel",
 
-    // [4.6.1] Initialize channel
+    // [4.7.1] Method: init()
     init() {
       try {
         if (typeof BroadcastChannel !== "undefined") {
@@ -1610,7 +1886,7 @@ window.tourSearchFunctions = (function () {
       }
     },
 
-    // [4.6.2] Send message to other windows
+    // [4.7.2] Method: send()
     send(type, data) {
       try {
         if (!this._channel) {
@@ -1625,7 +1901,7 @@ window.tourSearchFunctions = (function () {
       }
     },
 
-    // [4.6.3] Listen for messages
+    // [4.7.3] Method: listen()
     listen(callback) {
       try {
         if (!this._channel) {
@@ -1644,7 +1920,7 @@ window.tourSearchFunctions = (function () {
       }
     },
 
-    // [4.6.4] Close channel
+    // [4.7.4] Method: close()
     close() {
       try {
         if (this._channel) {
@@ -1660,8 +1936,8 @@ window.tourSearchFunctions = (function () {
     },
   };
 
-  // [4.7] UTILITY FUNCTIONS
-  // [4.7.1] Debounce function for performance optimization
+  // [4.8] Submodule: Utility Functions
+  // [4.8.1] Method: _debounce()
   function _debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -1675,7 +1951,86 @@ window.tourSearchFunctions = (function () {
     };
   }
 
-  // [4.7.2] Preprocess and normalize search terms
+  /**
+   * Normalizes image paths to ensure they're correctly resolved
+   * @param {string} path - The image path to normalize
+   * @param {boolean} [tryAlternateFormats=true] - Whether to try alternate formats
+   * @returns {string} - The normalized image path
+   */
+  function _normalizeImagePath(path, tryAlternateFormats = true) {
+    if (!path) return "";
+
+    // Basic sanitization - remove potential script injections
+  if (path.toLowerCase().startsWith('javascript:') || 
+      path.includes('<') || path.includes('>')) {
+    Logger.warn(`Potentially unsafe URL detected and blocked: ${path}`);
+    return "";
+  }
+
+    // Handle relative paths - ensure they're based on the right root
+    const baseUrl =
+      window.location.origin +
+      window.location.pathname.substring(
+        0,
+        window.location.pathname.lastIndexOf("/"),
+      );
+
+    // Clean the path - remove leading slash and relative path indicators
+    let cleanPath = path;
+    if (cleanPath.startsWith("./")) {
+      cleanPath = cleanPath.substring(2);
+    } else if (cleanPath.startsWith("/")) {
+      cleanPath = cleanPath.substring(1);
+    }
+
+    return `${baseUrl}/${cleanPath}`;
+  }
+  // [4.8.3] Method: _getThumbnailUrl() - Centralized thumbnail selection with config respect
+  function _getThumbnailUrl(resultItem, config) {
+  if (!config.thumbnailSettings?.enableThumbnails) {
+    return null;
+  }
+  
+  // Business/Sheets data takes priority
+  if (resultItem.businessData?.imageUrl) {
+    return _normalizeImagePath(resultItem.businessData.imageUrl);
+  }
+  
+  if (resultItem.imageUrl) {
+    return _normalizeImagePath(resultItem.imageUrl);
+  }
+  
+  // KEY FIX: For Panoramas, directly use the tour media object's methods
+  if (resultItem.type === "Panorama" && resultItem.item) {
+    try {
+      // This follows the native 3DVista pattern
+      const media = resultItem.item.get("media");
+      if (media) {
+        // Try the tour engine's standard thumbnail properties
+        let thumb = media.get("thumbnail") || 
+                    media.get("firstFrame") || 
+                    media.get("preview");
+                    
+        if (thumb) {
+          console.log(`[THUMBNAIL] Found for ${resultItem.label}: ${thumb}`);
+          return _normalizeImagePath(thumb);
+        }
+      }
+    } catch (e) {
+      console.log(`[THUMBNAIL] Error extracting from tour: ${e.message}`);
+    }
+  }
+  
+  // Fallback to type-specific default
+  const defaultImages = config.thumbnailSettings?.defaultImages || {};
+  if (defaultImages[resultItem.type]) {
+    return _normalizeImagePath(defaultImages[resultItem.type]);
+  }
+  
+  return _normalizeImagePath(defaultImages.default || config.thumbnailSettings?.defaultImagePath);
+}
+
+  // [4.8.2] Method: _preprocessSearchTerm()
   function _preprocessSearchTerm(term) {
     if (!term) return "";
 
@@ -1687,7 +2042,7 @@ window.tourSearchFunctions = (function () {
     return term;
   }
 
-  // [4.7.3] ARIA and Accessibility Helpers
+  // [4.8.3] Submodule: ARIA and Accessibility Helpers
   const _aria = {
     /**
      * Sets the aria-autocomplete attribute on an element
@@ -1780,69 +2135,108 @@ window.tourSearchFunctions = (function () {
     },
   };
 
-  // [4.8] ELEMENT DETECTION AND FILTERING
-  // [4.8.1] Enhanced element type detection
+  function _convertHexToRGBA(hex, opacity) {
+  if (!hex || typeof hex !== 'string') return `rgba(255, 255, 0, ${opacity})`; // Default yellow
+
+  // Remove # if present
+  hex = hex.replace('#', '');
+  
+  // Handle shorthand hex (#RGB)
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  }
+  
+  // Make sure we have a valid hex color
+  if (hex.length !== 6) return `rgba(255, 255, 0, ${opacity})`;
+  
+  // Convert hex to RGB
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  // Return rgba format
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+  // [4.9] Submodule: Element Detection and Filtering
   function _getElementType(overlay, label) {
     if (!overlay) return "Element";
     try {
-      // Lookup map for overlay classes
+      // **PRIORITY 1: Projected image detection (HIGHEST PRIORITY)**
+      if (overlay.projected === true || overlay.projected === "true") {
+        return "ProjectedImage";
+      }
+
+      // **PRIORITY 2: Enhanced polygon detection BEFORE class mapping**
+      if (
+        overlay.vertices &&
+        Array.isArray(overlay.vertices) &&
+        overlay.vertices.length > 2
+      ) {
+        // Check for video polygon - return Video type, not VideoPolygon
+        if (
+          overlay.video ||
+          overlay.videoResource ||
+          (overlay.data && overlay.data.video)
+        ) {
+          return "Video";
+        }
+        // Check for image polygon - return Image type, not ImagePolygon
+        if (
+          overlay.image ||
+          overlay.imageResource ||
+          (overlay.data && overlay.data.image)
+        ) {
+          return "Image";
+        }
+        return "Polygon";
+      }
+
+      // **PRIORITY 2.5: Sprite detection by ID (catch sprites that might be misclassified)**
+      if (overlay.id) {
+        const idStr = overlay.id.toString().toLowerCase();
+        console.log(`[DEBUG] Checking ID: ${idStr}`);
+
+        if (idStr.includes("sprite")) {
+          console.log(`[DEBUG] ID contains 'sprite', returning 3DHotspot`);
+          return "3DHotspot";
+        }
+      }
       const classNameMap = {
         FramePanoramaOverlay: "Webframe",
         QuadVideoPanoramaOverlay: "Video",
         ImagePanoramaOverlay: "Image",
         TextPanoramaOverlay: "Text",
         HotspotPanoramaOverlay: "Hotspot",
+        Model3DObject: "3DModelObject", // Static 3D objects
+        SpriteModel3DObject: "3DHotspot", // Interactive 3D sprites
+        SpriteHotspotObject: "3DHotspot",
+        Sprite3DObject: "3DHotspot",
+        Model3D: "3DModel", // 3D model containers
+        Model3DPlayListItem: "3DModel",
+        ProjectedImagePanoramaOverlay: "ProjectedImage",
+        PolygonPanoramaOverlay: "Polygon",
+        VideoPolygonPanoramaOverlay: "Video",
+        ImagePolygonPanoramaOverlay: "Image",
       };
-      // Lookup map for label patterns
-      const labelPatternMap = [
-        { pattern: "web", type: "Webframe" },
-        { pattern: "video", type: "Video" },
-        { pattern: "image", type: "Image" },
-        { pattern: "text", type: "Text" },
-        { pattern: "polygon", type: "Polygon" },
-        { pattern: "goto", type: "Hotspot" },
-        { pattern: "info", type: "Hotspot" },
-      ];
-      // 1. Direct class mapping
+
+      // **DIRECT CLASS MAPPING - This handles most cases including sprites**
       if (overlay.class && classNameMap[overlay.class]) {
-        // Special handling for HotspotPanoramaOverlay
-        if (overlay.class === "HotspotPanoramaOverlay") {
-          if (overlay.data) {
-            if (overlay.data.hasPanoramaAction) return "Hotspot";
-            if (overlay.data.hasText) return "Text";
-            if (overlay.data.isPolygon) return "Polygon";
-          }
-          const overlayLabel = (overlay.label || label || "").toLowerCase();
-          if (overlayLabel.includes("polygon")) return "Polygon";
-          if (overlayLabel === "image") return "Image";
-          if (overlayLabel.includes("info-")) return "Hotspot";
-          return "Hotspot";
-        }
         return classNameMap[overlay.class];
       }
-      // 2. Try overlay.get('class') if available
+
+      // **Try overlay.get('class') if available**
       if (typeof overlay.get === "function") {
         try {
           const className = overlay.get("class");
           if (classNameMap[className]) {
-            if (className === "HotspotPanoramaOverlay") {
-              const data = overlay.get("data") || {};
-              if (data.hasPanoramaAction) return "Hotspot";
-              if (data.hasText) return "Text";
-              if (data.isPolygon) return "Polygon";
-              const overlayLabel = (overlay.label || label || "").toLowerCase();
-              if (overlayLabel.includes("polygon")) return "Polygon";
-              if (overlayLabel === "image") return "Image";
-              if (overlayLabel.includes("info-")) return "Hotspot";
-              return "Hotspot";
-            }
             return classNameMap[className];
           }
         } catch (e) {
           Logger.debug("Error getting class via get method:", e);
         }
       }
-      // 3. Property-based detection (Webframe, Video, Polygon)
+
+      // **Enhanced property-based detection**
       const propertyChecks = [
         { props: ["url", "data.url"], type: "Webframe" },
         { props: ["video", "data.video"], type: "Video" },
@@ -1850,7 +2244,11 @@ window.tourSearchFunctions = (function () {
           props: ["vertices", "polygon", "data.vertices", "data.polygon"],
           type: "Polygon",
         },
+        { props: ["model3d", "data.model3d"], type: "3DModel" },
+        { props: ["sprite3d", "data.sprite3d"], type: "3DHotspot" },
+        { props: ["projected", "data.projected"], type: "ProjectedImage" },
       ];
+
       for (const check of propertyChecks) {
         for (const prop of check.props) {
           if (prop.includes(".")) {
@@ -1863,7 +2261,24 @@ window.tourSearchFunctions = (function () {
           }
         }
       }
-      // 4. Label pattern mapping
+
+      // **Enhanced label pattern mapping**
+      const labelPatternMap = [
+        { pattern: "web", type: "Webframe" },
+        { pattern: "video", type: "Video" },
+        { pattern: "image", type: "Image" },
+        { pattern: "text", type: "Text" },
+        { pattern: "polygon", type: "Polygon" },
+        { pattern: "goto", type: "Hotspot" },
+        { pattern: "info", type: "Hotspot" },
+        { pattern: "3d-model", type: "3DModel" },
+        { pattern: "model3d", type: "3DModel" },
+        { pattern: "3d-hotspot", type: "3DHotspot" },
+        { pattern: "sprite", type: "3DHotspot" },
+        { pattern: "projected", type: "ProjectedImage" },
+        { pattern: "projectedimage", type: "ProjectedImage" },
+      ];
+
       const overlayLabel = (overlay.label || label || "").toLowerCase();
       if (overlayLabel) {
         for (const { pattern, type } of labelPatternMap) {
@@ -1872,7 +2287,8 @@ window.tourSearchFunctions = (function () {
           }
         }
       }
-      // Default
+
+      // **Default**
       return "Element";
     } catch (error) {
       Logger.warn("Error in element type detection:", error);
@@ -1880,15 +2296,15 @@ window.tourSearchFunctions = (function () {
     }
   }
 
-  // [4.8.2] Element filtering based on type and properties
+  // [4.8.2] Element Filtering Based on Type and Properties
   function _shouldIncludeElement(elementType, label, tags) {
     try {
-      // Skip empty labels if configured
+      // [4.8.2.1] Skip empty labels if configured
       if (!label && _config.includeContent.elements.skipEmptyLabels) {
         return false;
       }
 
-      // Check minimum label length
+      // [4.8.2.2] Check minimum label length
       if (
         label &&
         _config.includeContent.elements.minLabelLength > 0 &&
@@ -1897,7 +2313,7 @@ window.tourSearchFunctions = (function () {
         return false;
       }
 
-      // Apply element type filtering
+      // [4.8.2.3] Apply element type filtering
       const typeFilterMode = _config.filter.elementTypes?.mode;
       if (
         typeFilterMode === "whitelist" &&
@@ -1919,7 +2335,31 @@ window.tourSearchFunctions = (function () {
         }
       }
 
-      // Apply label filtering
+      // [4.8.2.3.5] NEW - Apply unique item name filtering (exact match)
+      if (label) {
+        const uniqueNameFilterMode = _config.filter.uniqueNames?.mode;
+        if (
+          uniqueNameFilterMode === "whitelist" &&
+          Array.isArray(_config.filter.uniqueNames?.allowedNames) &&
+          _config.filter.uniqueNames.allowedNames.length > 0
+        ) {
+          // Exact match check - not a partial match like elementLabels
+          if (!_config.filter.uniqueNames.allowedNames.includes(label)) {
+            return false;
+          }
+        } else if (
+          uniqueNameFilterMode === "blacklist" &&
+          Array.isArray(_config.filter.uniqueNames?.blacklistedNames) &&
+          _config.filter.uniqueNames.blacklistedNames.length > 0
+        ) {
+          // Exact match check - not a partial match like elementLabels
+          if (_config.filter.uniqueNames.blacklistedNames.includes(label)) {
+            return false;
+          }
+        }
+      }
+
+      // [4.8.2.4] Apply label filtering
       const labelFilterMode = _config.filter.elementLabels?.mode;
       if (
         label &&
@@ -1949,7 +2389,7 @@ window.tourSearchFunctions = (function () {
         }
       }
 
-      // Apply tag filtering
+      // [4.8.2.5] Apply tag filtering
       const tagFilterMode = _config.filter.tagFiltering?.mode;
       if (Array.isArray(tags) && tags.length > 0) {
         if (
@@ -1985,8 +2425,9 @@ window.tourSearchFunctions = (function () {
         return false;
       }
 
-      // Check element type against configuration
+      // [4.8.2.6] Enhanced element type checking against configuration
       const elementTypeMap = {
+        Panorama: "includePanoramas",
         Hotspot: "includeHotspots",
         Polygon: "includePolygons",
         Video: "includeVideos",
@@ -1995,6 +2436,10 @@ window.tourSearchFunctions = (function () {
         Text: "includeText",
         ProjectedImage: "includeProjectedImages",
         Element: "includeElements",
+        "3DHotspot": "include3DHotspots",
+        "3DModel": "include3DModels",
+        "3DModelObject": "include3DModelObjects",
+        Business: "includeBusiness",
       };
 
       const configKey = elementTypeMap[elementType];
@@ -2016,8 +2461,7 @@ window.tourSearchFunctions = (function () {
     }
   }
 
-  // [4.9] ELEMENT INTERACTION
-  // [4.9.1] Element triggering with exponential backoff
+  // [4.9] Element Interaction
   function _triggerElement(tour, elementId, callback, options = {}) {
     if (!tour || !elementId) {
       Logger.warn("Invalid tour or elementId for trigger");
@@ -2103,7 +2547,7 @@ window.tourSearchFunctions = (function () {
       }
     };
 
-    // [4.9.1.1] Helper to find element by ID using multiple methods
+    // [4.9.0.1] Helper to find element by ID using multiple methods
     function findElementById(tour, id) {
       let element = null;
 
@@ -2141,12 +2585,394 @@ window.tourSearchFunctions = (function () {
     // Start first attempt after initial delay
     setTimeout(attemptTrigger, config.initialDelay);
   }
+  /**
+   * Enhanced element trigger function that can handle standalone Google Sheets entries
+   * @param {Object} searchResult - The search result item that was clicked
+   */
 
-  // [4.10] UI MANAGEMENT
-  // [4.10.1] Search styling application
+  // [4.9.1] Enhanced Element Trigger Function
+  function _triggerStandaloneElement(searchResult, tour) {
+    // [4.9.1.1] If it's a regular tour item, use the standard trigger
+    if (searchResult.item) {
+      if (typeof searchResult.item.trigger === "function") {
+        searchResult.item.trigger("click");
+        return true;
+      } else {
+        _triggerElement(tour, searchResult.id);
+        return true;
+      }
+    }
+
+    // [4.9.1.2] For standalone Google Sheets entries, try to find a matching tour element
+    if (searchResult.sheetsData) {
+      const entryId = searchResult.id || searchResult.sheetsData.id;
+      const entryTag = searchResult.sheetsData.tag;
+      const entryName = searchResult.sheetsData.name;
+
+      Logger.info(
+        `Looking for matching tour element for standalone entry: ${entryName || entryId || entryTag}`,
+      );
+
+      // Try to find matching tour element by ID, tag or other relationships
+      let foundElement = false;
+
+      // [4.9.1.2.1] Method 1: Try to find by ID
+      if (entryId) {
+        try {
+          const element = tour.player.getById(entryId);
+          if (element) {
+            Logger.info(`Found element by ID: ${entryId}`);
+            _triggerElement(tour, entryId);
+            return true;
+          }
+        } catch (e) {
+          Logger.debug(`No element found with ID: ${entryId}`);
+        }
+      }
+
+      // [4.9.1.2.2] Method 2: Try to find by tag matching - this is critical for Google Sheets integration
+      if (entryTag) {
+        try {
+          // First check if tag exists as an ID (common for hotspots)
+          const tagElement = tour.player.getById(entryTag);
+          if (tagElement) {
+            Logger.info(`Found element by tag as ID: ${entryTag}`);
+            _triggerElement(tour, entryTag);
+            return true;
+          }
+
+          // Then look through all items
+          const allItems = tour.mainPlayList.get("items");
+          if (allItems && allItems.length) {
+            for (let i = 0; i < allItems.length; i++) {
+              const item = allItems[i];
+              // Check media
+              if (item.get) {
+                const media = item.get("media");
+                if (media && media.get && media.get("id") === entryTag) {
+                  Logger.info(`Found panorama with media ID: ${entryTag}`);
+                  item.trigger("click");
+                  return true;
+                }
+
+                // Check for matching tag in data.tags array
+                const data = media && media.get ? media.get("data") : null;
+                if (
+                  data &&
+                  Array.isArray(data.tags) &&
+                  data.tags.includes(entryTag)
+                ) {
+                  Logger.info(`Found panorama with matching tag: ${entryTag}`);
+                  item.trigger("click");
+                  return true;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          Logger.debug(`Error searching for element by tag: ${e.message}`);
+        }
+      }
+
+      // [4.9.1.2.3] Method 3: Try matching by name
+      if (entryName) {
+        try {
+          // Look through all panoramas and try to find a matching name
+          const allItems = tour.mainPlayList.get("items");
+          if (allItems && allItems.length) {
+            for (let i = 0; i < allItems.length; i++) {
+              const item = allItems[i];
+              if (item.get) {
+                const media = item.get("media");
+                if (media && media.get) {
+                  const data = media.get("data");
+                  if (data && data.label && data.label.includes(entryName)) {
+                    Logger.info(
+                      `Found panorama with matching name: ${entryName}`,
+                    );
+                    item.trigger("click");
+                    return true;
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          Logger.debug(`Error searching for element by name: ${e.message}`);
+        }
+      }
+
+      // [4.9.1.2.4] Failed to find a matching element
+      Logger.warn(
+        `Could not find a matching tour element for: ${entryName || entryId || entryTag}`,
+      );
+      return false;
+    }
+
+    return false;
+  }
+  // [4.9.2] Enhanced Trigger Element Interaction Based on Item Type
+  function _triggerElementRetry(item, tour) {
+    try {
+      const type = item.type || (item.get ? item.get("type") : undefined);
+      const id = item.id || (item.get ? item.get("id") : undefined);
+
+      // [4.9.2.1] Try to get the correct tour reference based on your structure
+      let actualTour = tour;
+      if (!actualTour || (!actualTour.mainPlayList && !actualTour.player)) {
+        // Try different possible tour references
+        actualTour =
+          window.tour ||
+          window.tourInstance ||
+          window.player ||
+          (window.TDV &&
+          window.TDV.PlayerAPI &&
+          typeof window.TDV.PlayerAPI.getCurrentPlayer === "function"
+            ? window.TDV.PlayerAPI.getCurrentPlayer()
+            : null) ||
+          item.tour;
+
+        if (!actualTour) {
+          Logger.warn("[Search] No valid tour reference found");
+          return;
+        }
+      }
+
+      // [4.9.2.2] Get playlist from the right location
+      let playlist = null;
+      if (
+        actualTour.locManager &&
+        actualTour.locManager.rootPlayer &&
+        actualTour.locManager.rootPlayer.mainPlayList
+      ) {
+        playlist = actualTour.locManager.rootPlayer.mainPlayList;
+        Logger.debug(
+          "Using correct playlist from locManager.rootPlayer.mainPlayList",
+        );
+      } else if (actualTour.mainPlayList) {
+        playlist = actualTour.mainPlayList;
+        Logger.debug("Using fallback playlist from tour.mainPlayList");
+      } else if (actualTour.player && actualTour.player.mainPlayList) {
+        playlist = actualTour.player.mainPlayList;
+        Logger.debug("Using fallback playlist from tour.player.mainPlayList");
+      } else if (
+        actualTour.player &&
+        typeof actualTour.player.get === "function"
+      ) {
+        try {
+          playlist = actualTour.player.get("mainPlayList");
+          Logger.debug(
+            "Using fallback playlist from tour.player.get('mainPlayList')",
+          );
+        } catch (e) {
+          Logger.debug("Could not get mainPlayList from player:", e);
+        }
+      }
+
+      if (type === "3DModel") {
+        Logger.info("Triggering 3DModel interaction for ID: " + id);
+
+        // Method 1: Try direct playlist navigation
+        if (
+          typeof item.index === "number" &&
+          playlist &&
+          typeof playlist.set === "function"
+        ) {
+          Logger.info("Navigating to 3D model at playlist index " + item.index);
+          playlist.set("selectedIndex", item.index);
+          return;
+        }
+
+        // Method 2: Try to get the media and trigger it directly
+        const media =
+          item.item || item.media || (item.get ? item.get("media") : undefined);
+        if (media && typeof media.trigger === "function") {
+          Logger.info("Direct triggering 3D model media");
+          media.trigger("click");
+          return;
+        }
+
+        // Method 3: Try to find and trigger by ID using enhanced player detection
+        if (id) {
+          const players = [
+            actualTour.locManager && actualTour.locManager.rootPlayer
+              ? actualTour.locManager.rootPlayer
+              : null,
+            actualTour.player,
+            actualTour,
+            window.player,
+            window.TDV &&
+            window.TDV.PlayerAPI &&
+            typeof window.TDV.PlayerAPI.getCurrentPlayer === "function"
+              ? window.TDV.PlayerAPI.getCurrentPlayer()
+              : null,
+          ].filter(Boolean);
+
+          for (const player of players) {
+            try {
+              if (typeof player.getById === "function") {
+                const element = player.getById(id);
+                if (element && typeof element.trigger === "function") {
+                  Logger.info(
+                    "Triggering 3D model element by ID: " +
+                      id +
+                      " using player",
+                  );
+                  element.trigger("click");
+                  return;
+                }
+              }
+            } catch (e) {
+              Logger.debug("Player getById failed: " + e.message);
+            }
+          }
+        }
+
+        // [4.9.2.3] Try playlist item trigger
+        if (item.item && typeof item.item.trigger === "function") {
+          Logger.info("Triggering playlist item for 3D model");
+          item.item.trigger("click");
+          return;
+        }
+
+        Logger.warn("Could not trigger 3D model with ID: " + id);
+        return;
+      }
+
+      if (type === "3DModelObject") {
+        Logger.info("Triggering 3D Model Object interaction for ID: " + id);
+
+        // [4.9.2.4] First navigate to parent model
+        if (
+          item.parentIndex !== undefined &&
+          playlist &&
+          typeof playlist.set === "function"
+        ) {
+          playlist.set("selectedIndex", item.parentIndex);
+          Logger.info("Navigated to parent model at index " + item.parentIndex);
+
+          // Then try to activate the specific object after a delay
+          setTimeout(function () {
+            try {
+              if (
+                id &&
+                actualTour.player &&
+                typeof actualTour.player.getById === "function"
+              ) {
+                const object = actualTour.player.getById(id);
+                if (object && typeof object.trigger === "function") {
+                  object.trigger("click");
+                  Logger.info("Activated 3D model object: " + id);
+                } else {
+                  Logger.warn(
+                    "3D model object not found or not clickable: " + id,
+                  );
+                }
+              }
+            } catch (e) {
+              Logger.warn("Error activating 3D model object: " + e.message);
+            }
+          }, 500); // Increased delay for 3D model loading
+          return;
+        }
+      }
+
+      // [4.9.2.5] Default behavior for panoramas and other types
+      Logger.info(
+        "Triggering element interaction for type: " + type + ", ID: " + id,
+      );
+
+      // [4.9.2.5.1] Default panorama navigation
+      if (typeof item.index === "number") {
+        if (playlist && typeof playlist.set === "function") {
+          playlist.set("selectedIndex", item.index);
+          Logger.info("Navigated to item at index " + item.index);
+          return;
+        }
+      }
+
+      // [4.9.2.5.2] Handle child elements like hotspots
+      if (item.parentIndex !== undefined) {
+        if (playlist && typeof playlist.set === "function") {
+          playlist.set("selectedIndex", item.parentIndex);
+          Logger.info("Navigated to parent item at index " + item.parentIndex);
+
+          // Then try to trigger the element
+          if (id) {
+            setTimeout(function () {
+              attemptTrigger(id, actualTour);
+            }, 300);
+          }
+          return;
+        }
+      }
+
+      // [4.9.2.5.3] Direct element triggering as fallback
+      if (id) {
+        attemptTrigger(id, actualTour);
+      } else {
+        Logger.warn(
+          "Could not trigger element of type " + type + " - no ID available",
+        );
+      }
+    } catch (error) {
+      Logger.error("Error triggering element interaction:", error);
+    }
+  }
+
+  // [4.9.3] Helper Function for Attempting to Trigger Elements
+  function attemptTrigger(id, tour) {
+    try {
+      // [4.9.3.1] Try multiple tour references
+      const tourRefs = [
+        tour,
+        window.tourInstance,
+        window.tour,
+        window.player,
+        window.TDV &&
+        window.TDV.PlayerAPI &&
+        typeof window.TDV.PlayerAPI.getCurrentPlayer === "function"
+          ? window.TDV.PlayerAPI.getCurrentPlayer()
+          : null,
+      ].filter(Boolean);
+
+      for (const tourRef of tourRefs) {
+        if (
+          tourRef &&
+          tourRef.player &&
+          typeof tourRef.player.getById === "function"
+        ) {
+          try {
+            const element = tourRef.player.getById(id);
+            if (element && typeof element.trigger === "function") {
+              element.trigger("click");
+              Logger.info("Successfully triggered element: " + id);
+              return true;
+            }
+          } catch (e) {
+            continue; // Try next tour reference
+          }
+        }
+      }
+
+      Logger.warn("[Search] Tour or player not available");
+      Logger.warn("[Search] Failed to trigger element " + id);
+      return false;
+    } catch (error) {
+      Logger.warn("Error in attemptTrigger: " + error.message);
+      return false;
+    }
+  }
+
+  // [4.10] UI Management
   function _applySearchStyling() {
+    console.log(
+      "Thumbnail settings:",
+      window.searchFunctions?.getConfig()?.thumbnailSettings,
+    );
     // First check if container exists
     const searchContainer = document.getElementById("searchContainer");
+    const searchResults = searchContainer?.querySelector(".search-results");
 
     if (!searchContainer) {
       Logger.warn("Search container not found, will attempt to create it");
@@ -2159,7 +2985,7 @@ window.tourSearchFunctions = (function () {
           Logger.error(
             "Cannot create search container: #viewer element not found",
           );
-          return;
+          return; // Exit early if we can't create the container
         }
 
         // Create container from markup
@@ -2173,27 +2999,36 @@ window.tourSearchFunctions = (function () {
         const newContainer = document.getElementById("searchContainer");
         if (!newContainer) {
           Logger.error("Failed to create search container");
-          return;
+          return; // Exit early if creation failed
         }
 
         // Update the container reference for this function AND the module cache
         _elements.container = newContainer;
-        let searchContainer = _elements.container; // Update local reference for continued processing
       } catch (error) {
         Logger.error("Error creating search container:", error);
-        return;
+        return; // Exit early on error
       }
+    } else {
+      // Update the module cache if container exists
+      _elements.container = searchContainer;
     }
 
     // Now update all element references
-    _elements.input = searchContainer.querySelector("#tourSearch");
-    _elements.results = searchContainer.querySelector(".search-results");
-    _elements.clearButton = searchContainer.querySelector(".clear-button");
-    _elements.searchIcon = searchContainer.querySelector(".search-icon");
+    _elements.input = _elements.container.querySelector("#tourSearch");
+    _elements.results = _elements.container.querySelector(".search-results");
+    _elements.clearButton = _elements.container.querySelector(".clear-button");
+    _elements.searchIcon = _elements.container.querySelector(".search-icon");
 
     // Apply container position based on device
     const position = _config.searchBar.position;
     const isMobile = window.innerWidth <= _config.mobileBreakpoint;
+    const mobileOverrides = _config.searchBar.mobileOverrides || {};
+
+    // **FIXED: Features should only apply when mobile AND enabled**
+    const isMobileOverride =
+      isMobile &&
+      _config.searchBar.useResponsive &&
+      _config.searchBar.mobileOverrides?.enabled;
 
     // Set positioning attribute for CSS targeting
     if (position.left !== null && position.right === null) {
@@ -2204,28 +3039,28 @@ window.tourSearchFunctions = (function () {
       searchContainer.setAttribute("data-position", "right");
     }
 
-    // Clean up any existing style elements
+    // Set visibility behavior based on device and overrides
+    searchContainer.setAttribute(
+      "data-visibility-behavior",
+      isMobileOverride
+        ? mobileOverrides.visibility?.behavior || "dynamic"
+        : "fixed",
+    );
+
+    // [4.10.1.1] Clean up any existing style elements
     const existingStyle = document.getElementById("search-custom-vars");
     if (existingStyle) {
       existingStyle.remove();
     }
 
-    // Create new style element
+    // [4.10.1.2] Create new style element
     const styleElement = document.createElement("style");
     styleElement.id = "search-custom-vars";
 
-    // Generate CSS variables from config
-    // Removed unused variable: colors
-
-    // Generate responsive positioning CSS
-    const isMobileOverride =
-      isMobile &&
-      _config.searchBar.useResponsive &&
-      _config.searchBar.mobileOverrides?.enabled;
+    // [4.10.1.3] Generate responsive positioning CSS
     const mobilePosition = _config.searchBar.mobilePosition;
-    const mobileOverrides = _config.searchBar.mobileOverrides || {};
 
-    // Width calculation based on device type
+    // [4.10.1.4] Width calculation based on device type
     const desktopWidth =
       typeof _config.searchBar.width === "number"
         ? `${_config.searchBar.width}px`
@@ -2236,118 +3071,80 @@ window.tourSearchFunctions = (function () {
         : mobileOverrides.width
       : `calc(100% - ${(mobilePosition.left || 0) * 2 + (mobilePosition.right || 0) * 2}px)`;
 
-    // Maximum width for mobile if specified
+    // [4.10.1.5] Maximum width for mobile if specified
     const mobileMaxWidth = mobileOverrides.maxWidth
       ? typeof mobileOverrides.maxWidth === "number"
         ? `${mobileOverrides.maxWidth}px`
         : mobileOverrides.maxWidth
       : "";
 
-    // Base mobile positioning
+    // [4.10.1.6] Base mobile positioning
     const positionCSS = isMobileOverride
       ? `
-                /* Mobile positioning with overrides */
-                #searchContainer {
-                    position: fixed;
-                    ${mobilePosition.top !== null && mobilePosition.top !== undefined ? `top: ${mobilePosition.top}px;` : ""}
-                    ${mobilePosition.right !== null && mobilePosition.right !== undefined ? `right: ${mobilePosition.right}px;` : ""}
-                    ${mobilePosition.left !== null && mobilePosition.left !== undefined ? `left: ${mobilePosition.left}px;` : ""}
-                    ${
-                      mobilePosition.bottom !== null &&
-                      mobilePosition.bottom !== undefined
-                        ? mobilePosition.bottom === "auto"
-                          ? "bottom: auto;"
-                          : `bottom: ${mobilePosition.bottom}px;`
-                        : ""
-                    }
-                    width: ${mobileWidth};
-                    ${mobileMaxWidth ? `max-width: ${mobileMaxWidth};` : ""}
-                    z-index: 9999;
-                }
-                
-                /* Apply mobile-specific visibility behavior */
+            /* Mobile positioning with overrides */
+            #searchContainer {
+                position: fixed;
+                ${mobilePosition.top !== null && mobilePosition.top !== undefined ? `top: ${mobilePosition.top}px;` : ""}
+                ${mobilePosition.right !== null && mobilePosition.right !== undefined ? `right: ${mobilePosition.right}px;` : ""}
+                ${mobilePosition.left !== null && mobilePosition.left !== undefined ? `left: ${mobilePosition.left}px;` : ""}
                 ${
-                  mobileOverrides.visibility?.behavior === "dynamic"
-                    ? `
-                #searchContainer[data-visibility-behavior="dynamic"] {
-                    transition: opacity 0.3s ease, transform 0.3s ease;
-                }
-                `
+                  mobilePosition.bottom !== null &&
+                  mobilePosition.bottom !== undefined
+                    ? mobilePosition.bottom === "auto"
+                      ? "bottom: auto;"
+                      : `bottom: ${mobilePosition.bottom}px;`
                     : ""
                 }
-                
-                ${
-                  mobileOverrides.visibility?.behavior === "fixed"
-                    ? `
-                #searchContainer[data-visibility-behavior="fixed"] {
-                    opacity: 1 !important;
-                    transform: none !important;
-                }
-                `
-                    : ""
-                }
-                
-                ${
-                  mobileOverrides.fullScreenResults
-                    ? `
-                /* Full-screen results mode for mobile */
-                #searchContainer[data-fullscreen-results="true"] .results-container {
-                    position: fixed;
-                    top: ${(mobilePosition.top || 0) + 50}px;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    width: 100%;
-                    max-height: none;
-                    border-radius: 0;
-                    box-shadow: none;
-                    z-index: 9998;
-                }
-                `
-                    : ""
-                }
-                
-                ${
-                  mobileOverrides.focusMode
-                    ? `
-                /* Focus mode - darken background when search is active */
-                #searchContainer[data-focus-mode="true"].visible::before {
-                    content: '';
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: rgba(0, 0, 0, 0.5);
-                    z-index: -1;
-                }
-                `
-                    : ""
-                }
+                width: ${mobileWidth};
+                ${mobileMaxWidth ? `max-width: ${mobileMaxWidth};` : ""}
+                z-index: 9999;
+            }
+            
+            /* Apply mobile-specific visibility behavior */
+            ${
+              mobileOverrides.visibility?.behavior === "dynamic"
+                ? `
+            #searchContainer[data-visibility-behavior="dynamic"] {
+                transition: opacity 0.3s ease, transform 0.3s ease;
+            }
             `
+                : ""
+            }
+            
+            ${
+              mobileOverrides.visibility?.behavior === "fixed"
+                ? `
+            #searchContainer[data-visibility-behavior="fixed"] {
+                opacity: 1 !important;
+                transform: none !important;
+            }
+            `
+                : ""
+            }
+        `
       : `
-                /* Desktop positioning */
-                #searchContainer {
-                    position: fixed;
-                    ${position.top !== null ? `top: ${position.top}px;` : ""}
-                    ${position.right !== null ? `right: ${position.right}px;` : ""}
-                    ${position.left !== null ? `left: ${position.left}px;` : ""}
-                    ${position.bottom !== null ? `bottom: ${position.bottom}px;` : ""}
-                    width: ${desktopWidth};
-                    z-index: 9999;
-                }
-            `;
+            /* Desktop positioning */
+            #searchContainer {
+                position: fixed;
+                ${position.top !== null ? `top: ${position.top}px;` : ""}
+                ${position.right !== null ? `right: ${position.right}px;` : ""}
+                ${position.left !== null ? `left: ${position.left}px;` : ""}
+                ${position.bottom !== null ? `bottom: ${position.bottom}px;` : ""}
+                width: ${desktopWidth};
+                z-index: 9999;
+            }
+        `;
 
-    // [2.0.1] Apply display-related classes and CSS variables
+    // [4.10.1.7] Apply display-related classes and CSS variables
     const root = document.documentElement;
 
-    // Set CSS variables for result tags visibility
+    // [4.10.1.7.1] Set CSS variables for result tags visibility
     root.style.setProperty(
       "--result-tags-display",
       _config.showTagsInResults ? "block" : "none",
     );
 
-    // Apply class-based styling for visibility control
+    // [4.10.1.7.2] Apply class-based styling for visibility control
     if (!_config.display.showGroupHeaders) {
       document.body.classList.add("hide-group-headers");
     } else {
@@ -2366,17 +3163,17 @@ window.tourSearchFunctions = (function () {
       document.body.classList.remove("hide-result-icons");
     }
 
-    // Set icon color variable
+    // [4.10.1.7.3] Set icon color variable
     root.style.setProperty(
       "--color-result-icon",
       _config.appearance.colors.resultIconColor || "#6e85f7",
     );
-
-    // [2.0.2] Set border radius CSS variables
+    
+    // [4.10.1.8] Set border radius CSS variables
     const fieldRadius = _config.appearance.searchField.borderRadius;
     const resultsRadius = _config.appearance.searchResults.borderRadius;
 
-    // Set CSS variables for border radius
+    // [4.10.1.8.1] Set CSS variables for border radius
 
     root.style.setProperty(
       "--search-field-radius-top-left",
@@ -2412,7 +3209,46 @@ window.tourSearchFunctions = (function () {
       Math.min(resultsRadius.bottomLeft, 10) + "px",
     );
 
-    // [2.0.3] Set color variables for search
+    // [4.10.1.8.2] Set thumbnail border properties
+    const thumbnailRadius = _config.thumbnailSettings?.borderRadius || 4;
+    const thumbnailBorderColor =
+      _config.thumbnailSettings?.borderColor || "#e5e7eb";
+    const thumbnailBorderWidth = _config.thumbnailSettings?.borderWidth || 2;
+
+    root.style.setProperty("--thumbnail-border-radius", thumbnailRadius + "px");
+    root.style.setProperty("--thumbnail-border-color", thumbnailBorderColor);
+    root.style.setProperty(
+      "--thumbnail-border-width",
+      thumbnailBorderWidth + "px",
+    );
+
+
+    // [4.10.1.8.3] Set thumbnail size properties
+    const thumbSize = _config.thumbnailSettings?.thumbnailSizePx || 48;
+    const thumbSizeName = _config.thumbnailSettings?.thumbnailSize || "medium";
+
+    // [4.10.1.8.3.1] Always set the current size
+    root.style.setProperty("--thumbnail-current-size", thumbSize + "px");
+
+    // [4.10.1.8.3.2] Only update predefined sizes if using a standard size name AND custom pixel size
+    if (_config.thumbnailSettings?.thumbnailSizePx) {
+      // When using custom pixel size, update the corresponding named size
+      if (thumbSizeName === "small") {
+        root.style.setProperty("--thumbnail-small-size", thumbSize + "px");
+      } else if (thumbSizeName === "medium") {
+        root.style.setProperty("--thumbnail-medium-size", thumbSize + "px");
+      } else if (thumbSizeName === "large") {
+        root.style.setProperty("--thumbnail-large-size", thumbSize + "px");
+      }
+
+      // [4.10.1.8.3.3] Add data attribute to indicate custom sizing
+      document.body.setAttribute("data-custom-thumbnail-size", "true");
+    } else {
+      // Remove custom sizing indicator
+      document.body.removeAttribute("data-custom-thumbnail-size");
+    }
+
+    // [4.10.1.9] Set color variables for search
     root.style.setProperty(
       "--search-background",
       _config.appearance.colors.searchBackground || "#f4f3f2",
@@ -2451,7 +3287,7 @@ window.tourSearchFunctions = (function () {
     );
     root.style.setProperty(
       "--result-border-left",
-      _config.appearance.colors.resultBorderLeft || "#dd0e0e",
+      _config.appearance.colors.resultBorderLeft || "#ebebeb",
     );
     root.style.setProperty(
       "--result-text",
@@ -2461,22 +3297,147 @@ window.tourSearchFunctions = (function () {
       "--result-subtitle",
       _config.appearance.colors.resultSubtitle || "#64748b",
     );
+    root.style.setProperty(
+      "--color-result-icon",
+      _config.appearance.colors.resultIconColor || "#6e85f7",
+    );
+    root.style.setProperty(
+  "--result-subtext-color",
+  _config.appearance.colors.resultSubtextColor || "#000000",
+);
 
-    // Icon and group header alignment is now handled by CSS via data attributes
-    // No need to dynamically inject styles anymore
 
-    // [2.0.4] Handle thumbnail alignment from config
+// [NEW!] Set highlight color variables
+root.style.setProperty(
+  "--search-highlight-color", 
+  _config.appearance.colors.highlightText || "#000000"
+);
+
+// Create background color with opacity
+const highlightBg = _config.appearance.colors.highlightBackground || "#ffff00";
+const highlightOpacity = _config.appearance.colors.highlightBackgroundOpacity !== undefined ? 
+  _config.appearance.colors.highlightBackgroundOpacity : 0.5;
+
+// Convert hex to rgba if opacity < 1
+let highlightBgValue;
+if (highlightOpacity < 1) {
+  // Simple hex to rgba conversion
+  let r = 255, g = 255, b = 0; // Default yellow
+  
+  if (highlightBg && highlightBg.startsWith('#')) {
+    const hex = highlightBg.slice(1);
+    if (hex.length === 3) {
+      r = parseInt(hex[0] + hex[0], 16);
+      g = parseInt(hex[1] + hex[1], 16);
+      b = parseInt(hex[2] + hex[2], 16);
+    } else if (hex.length === 6) {
+      r = parseInt(hex.slice(0, 2), 16);
+      g = parseInt(hex.slice(2, 4), 16);
+      b = parseInt(hex.slice(4, 6), 16);
+    }
+  }
+  
+  highlightBgValue = `rgba(${r}, ${g}, ${b}, ${highlightOpacity})`;
+} else {
+  highlightBgValue = highlightBg;
+}
+
+root.style.setProperty("--search-highlight-bg", highlightBgValue);
+root.style.setProperty(
+  "--highlight-font-weight", 
+  _config.appearance.colors.highlightWeight || "bold"
+);
+
+// [4.10.1.9.1] Set tag colors
+root.style.setProperty(
+  "--tag-background",
+  _config.appearance.colors.tagBackground || "#e2e8f0",
+);
+
+    // [4.10.1.9.1] Set tag colors
+    root.style.setProperty(
+      "--tag-background",
+      _config.appearance.colors.tagBackground || "#e2e8f0",
+    );
+    root.style.setProperty(
+      "--tag-text",
+      _config.appearance.colors.tagText || "#475569",
+    );
+    root.style.setProperty(
+      "--tag-border",
+      _config.appearance.colors.tagBorder || "#cbd5e1",
+    );
+    root.style.setProperty(
+      "--tag-hover",
+      _config.appearance.colors.tagHover || "#d1d5db",
+    );
+
+    // [4.10.1.9.2] Set tag styling variables
+    root.style.setProperty(
+      "--tag-border-radius",
+      (_config.appearance.tags?.borderRadius || 12) + "px",
+    );
+    root.style.setProperty(
+      "--tag-font-size",
+      _config.appearance.tags?.fontSize || "12px",
+    );
+    root.style.setProperty(
+      "--tag-padding",
+      _config.appearance.tags?.padding || "2px 8px",
+    );
+    root.style.setProperty(
+      "--tag-margin",
+      _config.appearance.tags?.margin || "2px",
+    );
+    root.style.setProperty(
+      "--tag-font-weight",
+      _config.appearance.tags?.fontWeight || "500",
+    );
+    root.style.setProperty(
+      "--tag-text-transform",
+      _config.appearance.tags?.textTransform || "none",
+    );
+    root.style.setProperty(
+      "--tag-border-width",
+      _config.appearance.tags?.borderWidth || "1px",
+    );
+    root.style.setProperty(
+      "--tag-show-border",
+      _config.appearance.tags?.showBorder ? "solid" : "none",
+    );
+
+    // [4.10.1.11] Handle thumbnail alignment from config
     const thumbAlignment =
       _config.thumbnailSettings?.alignment === "right" ? "right" : "left";
 
-    // Apply thumbnail alignment to the document body as a data attribute
+    // [4.10.1.11.1] Apply thumbnail alignment to the document body as a data attribute
     document.body.setAttribute("data-thumbnail-align", thumbAlignment);
 
-    // Only include position-related CSS in the style element now that other styles are in external CSS
+    // [4.10.1.12] Apply styles to the DOM
     styleElement.textContent = positionCSS;
     document.head.appendChild(styleElement);
 
-    // Cache frequently used elements and apply placeholder text to search input
+    // [4.10.1.12.1] Add or update highlight styles
+const existingHighlightStyle = document.getElementById("search-highlight-styles");
+if (existingHighlightStyle) {
+  existingHighlightStyle.remove();
+}
+
+const highlightStyleElement = document.createElement("style");
+highlightStyleElement.id = "search-highlight-styles";
+highlightStyleElement.textContent = `
+.result-item strong,
+.result-item mark,
+.result-item .highlight {
+  background-color: var(--search-highlight-bg, rgba(255, 255, 0, 0.5));
+  color: var(--search-highlight-color, #000000);
+  font-weight: var(--highlight-font-weight, bold);
+  padding: 0 2px;
+  border-radius: 2px;
+}`;
+document.head.appendChild(highlightStyleElement);
+
+    // [4.10.1.13] Cache frequently used elements and apply placeholder text
     _elements.input = _elements.container.querySelector("#tourSearch");
     _elements.results = _elements.container.querySelector(".search-results");
     _elements.clearButton = _elements.container.querySelector(".clear-button");
@@ -2485,7 +3446,7 @@ window.tourSearchFunctions = (function () {
     if (_elements.input) {
       _elements.input.placeholder = _config.searchBar.placeholder;
 
-      // Add accessibility attributes
+      // [4.10.1.14] Add accessibility attributes
       _aria.setRole(_elements.input, "searchbox");
       _aria.setLabel(_elements.input, "Search tour");
       _aria.setAutoComplete(_elements.input, "list");
@@ -2493,147 +3454,137 @@ window.tourSearchFunctions = (function () {
 
     Logger.info("Search styling applied successfully");
   }
-/**
- * Comprehensive business data matching algorithm
- * Handles all cases and is robust for production use where IDs might change
- */
-function findBusinessMatch(tourElement) {
-  // Skip if no business data or invalid element
-  if (!_businessData || !_businessData.length || !tourElement) {
+  /**
+   * [4.11] Enhanced Business Data Matching That Doesn't Rely on Volatile Panorama IDs
+   */
+  function findBusinessMatch(tourElement) {
+    // [4.11.0.1] Skip if no business data or invalid element
+    if (!_businessData || !_businessData.length || !tourElement) {
+      return null;
+    }
+
+    const elementName = tourElement.name || "";
+    const elementId = tourElement.id || "";
+    const elementSubtitle = tourElement.subtitle || "";
+    const elementTags = Array.isArray(tourElement.tags) ? tourElement.tags : [];
+
+    Logger.debug(
+      `[MATCHING] Processing: ${elementName || elementId} (Subtitle: ${elementSubtitle}, Tags: ${elementTags.join(",")})`,
+    );
+
+    // [4.11.1] PRIORITY 1: Check subtitle matches FIRST
+    if (elementSubtitle) {
+      for (const entry of _businessData) {
+        // Direct subtitle to ID match
+        if (entry.id === elementSubtitle) {
+          Logger.debug(
+            `[MATCH:SUBTITLE_ID] Element subtitle "${elementSubtitle}" matches business entry with ID: ${entry.id}`,
+          );
+          return processBusinessMatch(entry);
+        }
+
+        // Subtitle in matchTags
+        if (
+          entry.matchTags &&
+          Array.isArray(entry.matchTags) &&
+          entry.matchTags.includes(elementSubtitle)
+        ) {
+          Logger.debug(
+            `[MATCH:SUBTITLE_TAG] Element subtitle "${elementSubtitle}" matches business entry with ID: ${entry.id}`,
+          );
+          return processBusinessMatch(entry);
+        }
+      }
+    }
+
+    // [4.11.2] PRIORITY 2: Check element name matches
+    if (elementName) {
+      for (const entry of _businessData) {
+        if (entry.id === elementName) {
+          Logger.debug(
+            `[MATCH:NAME] Element name "${elementName}" matches business entry with ID: ${entry.id}`,
+          );
+          return processBusinessMatch(entry);
+        }
+      }
+    }
+
+    // [4.11.3] PRIORITY 3: Check tag matches (lowest priority)
+    for (const entry of _businessData) {
+      if (entry.matchTags && Array.isArray(entry.matchTags)) {
+        for (const tag of elementTags) {
+          if (entry.matchTags.includes(tag)) {
+            Logger.debug(
+              `[MATCH:TAG] Element tag "${tag}" matches business entry with ID: ${entry.id}`,
+            );
+            return processBusinessMatch(entry);
+          }
+        }
+      }
+    }
+
+    // [4.11.4] No match found
+    Logger.debug(
+      `[MATCH:NONE] No business match for: ${elementName || elementId || elementSubtitle}`,
+    );
     return null;
-  }
-  
-  const elementName = tourElement.name || '';
-  const elementId = tourElement.id || '';
-  const elementTags = Array.isArray(tourElement.tags) ? tourElement.tags : [];
-  
-  console.log(`[MATCHING] Processing: ${elementName || elementId} (${elementTags.join(',')})`);
-  
-  // STRATEGY 1: Direct ID match with business.id
-  if (elementName) {
-    const nameMatch = _businessData.find(entry => 
-      entry.id && entry.id.toLowerCase() === elementName.toLowerCase());
-  
-    if (nameMatch) {
-      console.log(`[MATCH:NAME] Direct match on name: ${elementName} = ${nameMatch.id}`);
-      return nameMatch;
-    }
-  }
-  
-  // STRATEGY 2: Direct panorama ID match (for entries explicitly mapped in business data)
-  if (elementId) {
-    const idMatch = _businessData.find(entry => 
-      entry.id && entry.id.toLowerCase() === elementId.toLowerCase());
-    
-    if (idMatch) {
-      console.log(`[MATCH:DIRECT_ID] Direct match on ID: ${elementId}`);
-      return idMatch;
-    }
-  }
-  
-  // STRATEGY 3: Match by tag (important for panoramas with tags but no names)
-  if (elementTags.length > 0) {
-    // First try exact tag matches with business data IDs
-    for (const tag of elementTags) {
-      const tagMatch = _businessData.find(entry => 
-        entry.id && entry.id.toLowerCase() === tag.toLowerCase());
-      
-      if (tagMatch) {
-        console.log(`[MATCH:TAG_ID] Tag matches business id: ${tag} = ${tagMatch.id}`);
-        return tagMatch;
-      }
-    }
-    
-    // Then try match by tag field as string (comma-separated)
-    const allTags = elementTags.join(',').toLowerCase();
-    for (const entry of _businessData) {
-      if (entry.tag) {
-        const entryTags = entry.tag.toLowerCase();
-        // Check if any tag in business data matches any element tag
-        for (const tag of elementTags) {
-          if (entryTags.includes(tag.toLowerCase())) {
-            console.log(`[MATCH:TAG_STRING] Business tag string contains element tag: ${tag}`);
-            return entry;
-          }
-        }
-      }
-    }
-    
-    // Try to match by tags array if available
-    for (const tag of elementTags) {
-      const tagArrayMatch = _businessData.find(entry => 
-        Array.isArray(entry.tags) && entry.tags.some(btag => 
-          btag.toLowerCase() === tag.toLowerCase()));
-      
-      if (tagArrayMatch) {
-        console.log(`[MATCH:TAG_ARRAY] Tag found in business tags array: ${tag}`);
-        return tagArrayMatch;
-      }
-    }
-  }
-  
-  // STRATEGY 4: For panoramas with IDs but no names, try flexible substring matching
-  if (elementId && elementId.includes('panorama_')) {
-    for (const entry of _businessData) {
-      // Skip entries that are explicitly panorama IDs (we already checked those)
-      if (entry.id && entry.id.startsWith('panorama_')) continue;
-      
-      // Check if business ID is contained within the panorama ID
-      if (entry.id && elementId.toLowerCase().includes(entry.id.toLowerCase())) {
-        console.log(`[MATCH:ID_SUBSTRING] ID substring match: ${elementId} contains ${entry.id}`);
-        return entry;
-      }
-      
-      // Check if there's any tag overlap between business data tags and element tags
-      if (entry.tag && elementTags.length > 0) {
-        const entryTagsArr = entry.tag.split(',').map(t => t.trim().toLowerCase());
-        for (const tag of elementTags) {
-          if (entryTagsArr.includes(tag.toLowerCase())) {
-            console.log(`[MATCH:TAG_OVERLAP] Tag overlap: ${tag}`);
-            return entry;
-          }
-        }
-      }
-    }
-  }
-  
-  // STRATEGY 5: For truly empty panoramas, find "EmptyPanorama" entry if it exists
-  if (!elementName && elementTags.length === 0) {
-    const emptyMatch = _businessData.find(entry => entry.id === "EmptyPanorama");
-    if (emptyMatch) {
-      console.log(`[MATCH:EMPTY] Generic entry for empty panorama`);
-      return emptyMatch;
-    }
-  }
-  
-  // No match found
-  console.log(`[MATCH:NONE] No business match for: ${elementName || elementId}`);
-  return null;
-}
 
-  // [5.4] MAIN SEARCH FUNCTIONALITY
+    // [4.11.4.0] Helper function to process business match
+    function processBusinessMatch(entry) {
+      const businessMatch = { ...entry };
 
-  // [5.1] Keyboard navigation manager
-  // Using the centralized keyboardManager object from the top of the module
-  // The implementation has been moved to avoid duplicate declarations
+      Logger.debug("[DEBUG] Before normalization:", {
+        imageUrl: businessMatch.imageUrl,
+        localImage: businessMatch.localImage,
+      });
 
-  // [5.2] IMPROVED EVENT BINDING with proper cleanup
+      // [4.11.4.1] Normalize image paths in business data
+      if (businessMatch.imageUrl) {
+        businessMatch.imageUrl = _normalizeImagePath(businessMatch.imageUrl);
+      }
+
+      if (businessMatch.localImage) {
+        businessMatch.localImage = _normalizeImagePath(
+          businessMatch.localImage,
+        );
+      }
+
+      // [4.11.4.2] If no imageUrl but has localImage, use localImage as imageUrl
+      if (!businessMatch.imageUrl && businessMatch.localImage) {
+        businessMatch.imageUrl = businessMatch.localImage;
+        console.log(
+          "[DEBUG] Using localImage as imageUrl:",
+          businessMatch.imageUrl,
+        );
+      }
+
+      // [4.11.4.3] Debug logging after normalization
+      console.log("[DEBUG] After normalization:", {
+        imageUrl: businessMatch.imageUrl,
+        localImage: businessMatch.localImage,
+      });
+
+      return businessMatch;
+    }
+  }
+
+  // [4.12] Improved Event Binding with Proper Cleanup
   function _bindSearchEventListeners(
     searchContainer,
     searchInput,
     clearButton,
     searchIcon,
-    searchCallback, // Renamed to avoid shadowing the module-level performSearch variable
+    searchCallback,
   ) {
-    // First clean up any existing event listeners
+    // [4.9.1] First clean up any existing event listeners
     _unbindSearchEventListeners();
 
     Logger.debug("Binding search event listeners...");
 
-    // Create a cleanup registry for this session
+    // [4.9.2] Create a cleanup registry for this session
     const cleanup = [];
 
-    // Bind input event with device-appropriate debounce
+    // [4.9.3] Bind input event with device-appropriate debounce
     if (searchInput) {
       const isMobile =
         window.innerWidth <= _config.mobileBreakpoint ||
@@ -2648,7 +3599,7 @@ function findBusinessMatch(tourElement) {
         searchInput.removeEventListener("input", inputHandler),
       );
 
-      // Mobile touch optimization
+      // [4.9.3.1] Mobile touch optimization
       if ("ontouchstart" in window) {
         const touchHandler = () => searchInput.focus();
         searchInput.addEventListener("touchend", touchHandler);
@@ -2658,7 +3609,7 @@ function findBusinessMatch(tourElement) {
       }
     }
 
-    // Bind clear button
+    // [4.9.4] Bind clear button
     if (clearButton) {
       const clearHandler = (e) => {
         e.stopPropagation();
@@ -2682,7 +3633,7 @@ function findBusinessMatch(tourElement) {
       );
     }
 
-    // Bind search icon
+    // [4.9.5] Bind search icon
     if (searchIcon) {
       if (searchIcon) searchIcon.classList.add("search-icon");
       const iconHandler = () => {
@@ -2696,7 +3647,7 @@ function findBusinessMatch(tourElement) {
       cleanup.push(() => searchIcon.removeEventListener("click", iconHandler));
     }
 
-    // Document click handler for closing search
+    // [4.9.6] Document click handler for closing search
     const documentClickHandler = (e) => {
       if (!searchContainer.classList.contains("visible")) return;
       if (!searchContainer.contains(e.target)) {
@@ -2709,7 +3660,7 @@ function findBusinessMatch(tourElement) {
       document.removeEventListener("click", documentClickHandler),
     );
 
-    // Touch handler for mobile
+    // [4.9.7] Touch handler for mobile
     if ("ontouchstart" in window) {
       const touchStartHandler = (e) => {
         if (
@@ -2726,7 +3677,7 @@ function findBusinessMatch(tourElement) {
       );
     }
 
-    // Keyboard navigation
+    // [4.9.8] Keyboard navigation
     const keyboardHandler = (e) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -2754,64 +3705,111 @@ function findBusinessMatch(tourElement) {
       document.removeEventListener("keydown", keyboardHandler),
     );
 
-    // Store cleanup functions for later use
+    // [4.9.9] Store cleanup functions for later use
     window._searchEventCleanup = cleanup;
 
     Logger.debug("Search event listeners bound successfully");
     return true;
   }
 
-  // Improved cleanup function - update the previously declared function
-  _unbindSearchEventListeners = function () {
-    try {
-      if (
-        window._searchEventCleanup &&
-        Array.isArray(window._searchEventCleanup)
-      ) {
-        window._searchEventCleanup.forEach((cleanupFn) => {
-          try {
-            cleanupFn();
-          } catch (e) {
-            Logger.debug("Event cleanup error:", e);
-          }
-        });
-        window._searchEventCleanup = [];
-      }
-
-      Logger.debug("Search event listeners cleaned up");
-      return true;
-    } catch (error) {
-      Logger.warn("Error during event cleanup:", error);
-      return false;
+  // [4.12.1] Improved Cleanup Function - Update the Previously Declared Function
+const _unbindSearchEventListeners = function () {
+  try {
+    if (window._searchEventCleanup && Array.isArray(window._searchEventCleanup)) {
+      window._searchEventCleanup.forEach((cleanupFn) => {
+        try {
+          cleanupFn();
+        } catch (e) {
+          Logger.debug("Event cleanup error:", e);
+        }
+      });
+      window._searchEventCleanup = [];
     }
-  };
+    Logger.debug("Search event listeners cleaned up");
+    return true;
+  } catch (error) {
+    Logger.warn("Error during event cleanup:", error);
+    return false;
+  }
+};
 
-  // [5.3] DATA LOADING
-  // [5.3.1] Google Sheets data loading function
+  // [5.0] Data Loading
   function _loadGoogleSheetsData() {
-    // Skip if Google Sheets data is not enabled
-    if (
-      !_config.googleSheets.useGoogleSheetData ||
-      !_config.googleSheets.googleSheetUrl
-    ) {
-      Logger.info(
-        "Google Sheets integration disabled or URL not provided, skipping load",
+    // [5.1.1] Skip if Google Sheets data is not enabled
+    if (!_config.googleSheets.useGoogleSheetData) {
+      console.log(
+        "🔴 [DATA SOURCE] Google Sheets integration DISABLED - skipping load",
       );
       return Promise.resolve([]);
     }
 
-    const sheetUrl = _config.googleSheets.googleSheetUrl;
+    // **NEW: Enhanced debug logging**
+    console.log("🔍 [DATA SOURCE DEBUG] Configuration check:");
+    console.log(
+      "   useGoogleSheetData:",
+      _config.googleSheets.useGoogleSheetData,
+    );
+    console.log("   useLocalCSV:", _config.googleSheets.useLocalCSV);
+    console.log("   googleSheetUrl:", _config.googleSheets.googleSheetUrl);
+    console.log("   localCSVUrl:", _config.googleSheets.localCSVUrl);
+
+    if (
+      !_config.googleSheets.googleSheetUrl &&
+      !_config.googleSheets.useLocalCSV
+    ) {
+      console.log(
+        "🔴 [DATA SOURCE] No data source provided - need either googleSheetUrl or useLocalCSV=true",
+      );
+      return Promise.resolve([]);
+    }
+
+    // [5.1.1.1] Determine data source (local CSV vs Google Sheets URL) - FIXED VERSION
+    let fetchUrl;
+    let dataSourceType;
+
+    if (_config.googleSheets.useLocalCSV) {
+      // PRIORITY: Local CSV mode - ignore Google Sheets URL completely
+      if (_config.googleSheets.localCSVUrl) {
+        fetchUrl = _config.googleSheets.localCSVUrl;
+      } else {
+        // Construct local CSV URL from components
+        const baseUrl =
+          window.location.origin +
+          window.location.pathname.substring(
+            0,
+            window.location.pathname.lastIndexOf("/"),
+          );
+        const csvDir = _config.googleSheets.localCSVDir || "business-data";
+        const csvFile = _config.googleSheets.localCSVFile || "search-data.csv";
+        fetchUrl = `${baseUrl}/search-pro-non-mod/${csvDir}/${csvFile}`;
+      }
+      dataSourceType = "local";
+      Logger.info(`🔌 LOCAL CSV MODE: Loading from ${fetchUrl}`);
+
+      // CRITICAL: Ignore Google Sheets URL in local mode
+      if (_config.googleSheets.googleSheetUrl) {
+        Logger.info("ℹ️  Google Sheets URL ignored (Local CSV mode active)");
+      }
+    } else if (_config.googleSheets.googleSheetUrl) {
+      // Use Google Sheets URL (original functionality)
+      fetchUrl = _config.googleSheets.googleSheetUrl;
+      dataSourceType = "online";
+      Logger.info(`🌐 ONLINE MODE: Loading from ${fetchUrl}`);
+    } else {
+      // No data source configured
+      Logger.warn(
+        "⚠️  No data source configured (no URL and useLocalCSV=false)",
+      );
+      return Promise.resolve([]);
+    }
+
     const fetchMode = _config.googleSheets.fetchMode || "csv";
     const cachingOptions = _config.googleSheets.caching || {};
     const progressiveOptions = _config.googleSheets.progressiveLoading || {};
     const authOptions = _config.googleSheets.authentication || {};
 
-    Logger.info(
-      `Loading Google Sheets data from: ${sheetUrl} in ${fetchMode} mode`,
-    );
-
-    // Check cache first if enabled
-    if (cachingOptions.enabled) {
+    // [5.1.2] Check cache first if enabled (only for online Google Sheets, not local files)
+    if (cachingOptions.enabled && dataSourceType === "online") {
       try {
         const storageKey = cachingOptions.storageKey || "tourGoogleSheetsData";
         const cacheTimeoutMinutes = cachingOptions.timeoutMinutes || 60;
@@ -2848,38 +3846,42 @@ function findBusinessMatch(tourElement) {
         }
       } catch (cacheError) {
         Logger.warn("Error checking cache, will fetch fresh data:", cacheError);
-        // Continue with fetch if cache check fails
       }
     }
 
-    // Ensure the URL is valid for fetching
-    let fetchUrl = sheetUrl;
-    if (fetchMode === "csv" && !sheetUrl.includes("/export?format=csv")) {
-      // Check if this is a Google Sheets view URL and convert it to a CSV export URL
+    // [5.1.3] Process URL for Google Sheets (only if using online mode)
+    if (
+      dataSourceType === "online" &&
+      fetchMode === "csv" &&
+      !fetchUrl.includes("/export?format=csv")
+    ) {
+      // [5.1.3.1] Check if this is a Google Sheets view URL and convert it to a CSV export URL
       if (
-        sheetUrl.includes("spreadsheets.google.com/") &&
-        !sheetUrl.includes("/export")
+        fetchUrl.includes("spreadsheets.google.com/") &&
+        !fetchUrl.includes("/export")
       ) {
         // Extract the sheet ID
         let sheetId = "";
         try {
-          // Extract sheet ID from URL
-          const match = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+          const match = fetchUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
           if (match && match[1]) {
             sheetId = match[1];
             fetchUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
           }
-        } catch (error) {
+        } catch (e) {
           Logger.warn(
             "Failed to convert Google Sheets URL to CSV export URL:",
-            error,
+            e,
           );
         }
       }
     }
 
-    // Add authentication if enabled
+    Logger.info(`Final fetch URL: ${fetchUrl}`);
+
+    // [5.1.4] Add authentication if enabled (only for online Google Sheets)
     if (
+      dataSourceType === "online" &&
       authOptions.enabled &&
       authOptions.authType === "apiKey" &&
       authOptions.apiKey
@@ -2890,37 +3892,64 @@ function findBusinessMatch(tourElement) {
       Logger.debug("Added API key authentication to request");
     }
 
-    // Fetch the data
+    // [5.1.5] Fetch the data
     return fetch(fetchUrl)
       .then((response) => {
+        Logger.info(
+          `${dataSourceType === "local" ? "Local CSV" : "Google Sheets"} fetch response status: ${response.status}`,
+        );
         if (!response.ok) {
           throw new Error(
-            `Failed to load Google Sheets data: ${response.status} ${response.statusText}`,
+            `Failed to load ${dataSourceType === "local" ? "local CSV" : "Google Sheets"} data: ${response.status} ${response.statusText}`,
           );
         }
-        return response.text(); // Get as text for both CSV and JSON
+        return response.text();
       })
       .then((text) => {
+        Logger.info(
+          `${dataSourceType === "local" ? "Local CSV" : "Google Sheets"} raw data length: ${text.length}`,
+        );
+        Logger.info(
+          `${dataSourceType === "local" ? "Local CSV" : "Google Sheets"} first 200 chars: ${text.substring(0, 200)}`,
+        );
+
         let data = [];
 
         try {
           if (fetchMode === "csv") {
-            // Parse CSV using our Papa Parse implementation
-            const result = Papa.parse(text, _config.googleSheets.csvOptions);
-            if (result.errors && result.errors.length > 0) {
-              Logger.warn("CSV parsing errors:", result.errors);
+            // [5.1.5.1] Simple CSV parsing
+            const lines = text.split("\n");
+            const headers = lines[0]
+              .split(",")
+              .map((h) => h.trim().replace(/"/g, ""));
+
+            for (let i = 1; i < lines.length; i++) {
+              const line = lines[i].trim();
+              if (!line) continue;
+
+              const values = line
+                .split(",")
+                .map((v) => v.trim().replace(/"/g, ""));
+              const row = {};
+
+              headers.forEach((header, index) => {
+                row[header] = values[index] || "";
+              });
+
+              if (row.id || row.tag || row.name) {
+                data.push(row);
+              }
             }
-            data = result.data;
           } else {
-            // Parse as JSON
+            // [5.1.5.2] Parse as JSON
             data = JSON.parse(text);
 
-            // Handle common Google Sheets JSON API responses
+            // [5.1.5.3] Handle common Google Sheets JSON API responses
             if (data.feed && data.feed.entry) {
-              // Handle Google Sheets API v3 format
+              // [5.1.5.3.1] Handle Google Sheets API v3 format
               data = data.feed.entry.map((entry) => {
                 const row = {};
-                // Process each field (gs:cell or content entries)
+                // [5.1.5.3.1.1] Process each field (gs:cell or content entries)
                 Object.keys(entry).forEach((key) => {
                   if (key.startsWith("gsx$")) {
                     const fieldName = key.substr(4);
@@ -2930,7 +3959,7 @@ function findBusinessMatch(tourElement) {
                 return row;
               });
             } else if (data.values) {
-              // Handle Google Sheets API v4 format
+              // [5.1.5.3.2] Handle Google Sheets API v4 format
               const headers = data.values[0];
               data = data.values.slice(1).map((row) => {
                 const rowData = {};
@@ -2942,35 +3971,35 @@ function findBusinessMatch(tourElement) {
             }
           }
 
-          // Validate the data structure
+          // [5.1.5.4] Validate the data structure
           if (!Array.isArray(data)) {
             Logger.warn(
-              "Google Sheets data is not an array after parsing, converting to array",
+              `${dataSourceType === "local" ? "Local CSV" : "Google Sheets"} data is not an array after parsing, converting to array`,
             );
             data = [data]; // Convert to array if not already
           }
 
-          // Log diagnostics
+          // [5.1.5.5] Log diagnostics
           Logger.info(
-            `Successfully loaded ${data.length} rows from Google Sheets`,
+            `Successfully loaded ${data.length} rows from ${dataSourceType === "local" ? "local CSV file" : "Google Sheets"}`,
           );
 
-          // Implement progressive loading if enabled
+          // [5.1.5.6] Process data with progressive loading support
           let processedData = [];
           if (progressiveOptions.enabled && data.length > 20) {
-            // Apply progressive loading for larger datasets
+            // [5.1.5.6.1] Apply progressive loading for larger datasets
             Logger.info(
               "Progressive loading enabled, processing essential fields first",
             );
 
-            // Extract just essential fields for initial load
+            // [5.1.5.6.1.1] Extract just essential fields for initial load
             const essentialFields = progressiveOptions.initialFields || [
               "id",
               "tag",
               "name",
             ];
 
-            // Create a lightweight version with just essential fields
+            // [5.1.5.6.1.2] Create a lightweight version with just essential fields
             processedData = data.map((row) => {
               const essentialData = {};
               essentialFields.forEach((field) => {
@@ -2979,9 +4008,9 @@ function findBusinessMatch(tourElement) {
               return essentialData;
             });
 
-            // Schedule loading of full data for later
+            // [5.1.5.6.1.3] Schedule Loading of Full Data for Later
             setTimeout(() => {
-              // Process full data in background
+              // [5.1.5.6.1.3.1] Process Full Data in Background
               const fullData = data.map((row) => ({
                 id: row.id || "",
                 tag: row.tag || "",
@@ -2992,13 +4021,14 @@ function findBusinessMatch(tourElement) {
                 parentId: row.parentId || "",
               }));
 
-              // Replace data with full version
+              // [5.1.5.6.1.3.2] Replace Data with Full Version
               _googleSheetsData = fullData;
 
-              // Update cache with full data if caching is enabled
-              if (cachingOptions.enabled) {
+              // [5.1.5.6.1.3.3] Update Cache with Full Data if Caching is Enabled (Only for Online Sources)
+              if (cachingOptions.enabled && dataSourceType === "online") {
                 try {
-                  const storageKey = cachingOptions.storageKey || "tourGoogleSheetsData";
+                  const storageKey =
+                    cachingOptions.storageKey || "tourGoogleSheetsData";
                   localStorage.setItem(storageKey, JSON.stringify(fullData));
                   localStorage.setItem(
                     `${storageKey}_timestamp`,
@@ -3010,12 +4040,13 @@ function findBusinessMatch(tourElement) {
                 }
               }
 
+              // [5.1.5.6.1.3.4] Log background loading completion
               Logger.info(
-                "Background loading of detailed Google Sheets data complete",
+                `Background loading of detailed ${dataSourceType === "local" ? "local CSV" : "Google Sheets"} data complete`,
               );
             }, 2000); // Delay full data processing to avoid blocking UI
           } else {
-            // Regular (non-progressive) processing
+            // [5.1.5.6.2] Regular (non-progressive) processing
             processedData = data.map((row) => ({
               id: row.id || "",
               tag: row.tag || "",
@@ -3027,8 +4058,8 @@ function findBusinessMatch(tourElement) {
             }));
           }
 
-          // Cache the data if caching is enabled
-          if (cachingOptions.enabled) {
+          // [5.1.5.7] Cache the data if caching is enabled (only for online Google Sheets)
+          if (cachingOptions.enabled && dataSourceType === "online") {
             try {
               const storageKey =
                 cachingOptions.storageKey || "tourGoogleSheetsData";
@@ -3041,15 +4072,18 @@ function findBusinessMatch(tourElement) {
             } catch (e) {
               Logger.warn("Failed to cache Google Sheets data:", e);
             }
+          } else if (dataSourceType === "local") {
+            Logger.debug(
+              "Local CSV data not cached (caching disabled for local files)",
+            );
           }
 
-          // Store in module-level variable for future use
+          // [5.1.5.8] Store in module-level variable for future use
           _googleSheetsData = processedData;
 
-          // Output diagnostics about data quality
+          // [5.1.5.9] Output diagnostics about data quality
           const missingIds = processedData.filter((row) => !row.id).length;
           const missingTags = processedData.filter((row) => !row.tag).length;
-          // removed unused variable: missingNames
 
           if (missingIds > 0 || missingTags > 0) {
             Logger.warn(
@@ -3059,18 +4093,302 @@ function findBusinessMatch(tourElement) {
 
           return processedData;
         } catch (e) {
-          Logger.error("Error parsing Google Sheets data:", e);
+          Logger.error(
+            `Error parsing ${dataSourceType === "local" ? "local CSV" : "Google Sheets"} data:`,
+            e,
+          );
+          _googleSheetsData = [];
           return [];
         }
       })
       .catch((error) => {
-        Logger.warn(`Error loading Google Sheets data: ${error.message}`);
-        _googleSheetsData = []; // Reset to empty array on error
-        return []; // Return empty array to allow chaining
+        Logger.warn(
+          `Error loading ${dataSourceType === "local" ? "local CSV" : "Google Sheets"} data: ${error.message}`,
+        );
+        _googleSheetsData = [];
+        return [];
       });
   }
 
-  // [5.3.2] Business data loading function
+  // [5.2] Method: processGoogleSheetsData() - Process Google Sheets Data and Integrate with Search Index
+  function processGoogleSheetsData(fuseData, config) {
+    // CRITICAL: Prevent processing if Business Data is also enabled
+    if (config.businessData?.useBusinessData) {
+      Logger.warn(
+        "🚨 CONFLICT PREVENTION: Skipping Google Sheets processing (Business Data is active)",
+      );
+      Logger.warn(
+        "💡 To use Google Sheets, set businessData.useBusinessData = false",
+      );
+      return; // Exit early to prevent duplicates
+    }
+
+    Logger.info(
+      `Processing ${_googleSheetsData.length} Google Sheets entries for search index`,
+    );
+
+    // [5.2.1] Logic Block: Enhanced tracking for duplicate prevention
+    const matchedSheetIds = new Set();
+    const matchedSheetTags = new Set();
+    const existingLabels = new Map(); // label -> array of items with that label
+    const existingIds = new Set();
+
+    // [5.2.2] Logic Block: Track existing items with better context
+    fuseData.forEach((item) => {
+      if (item.label) {
+        const labelKey = item.label.toLowerCase();
+        if (!existingLabels.has(labelKey)) {
+          existingLabels.set(labelKey, []);
+        }
+        existingLabels.get(labelKey).push({
+          item: item,
+          id: item.id,
+          type: item.type,
+          source: item.source,
+          index: item.index,
+        });
+      }
+
+      if (item.id) {
+        existingIds.add(item.id);
+      }
+
+      if (item.sheetsData) {
+        if (item.sheetsData.id) {
+          matchedSheetIds.add(item.sheetsData.id);
+        }
+        if (item.sheetsData.tag) {
+          matchedSheetTags.add(item.sheetsData.tag);
+        }
+      }
+    });
+
+    // Log potential duplicate scenarios
+    existingLabels.forEach((items, label) => {
+      if (items.length > 1) {
+        Logger.warn(
+          `[DUPLICATE DETECTION] Found ${items.length} items with label "${label}":`,
+        );
+        items.forEach(({ item, id, type, source }) => {
+          Logger.warn(`  - ${type} (ID: ${id}, Source: ${source})`);
+        });
+      }
+    });
+
+    _googleSheetsData.forEach((sheetsEntry, sheetsIndex) => {
+      try {
+        if (!sheetsEntry.id && !sheetsEntry.tag && !sheetsEntry.name) {
+          return;
+        }
+
+        const entryId = sheetsEntry.id;
+        const entryTag = sheetsEntry.tag;
+        const entryName = sheetsEntry.name;
+
+        Logger.debug(
+          `[SHEETS PROCESSING] Processing entry: ${entryName} (ID: ${entryId}, Tag: ${entryTag})`,
+        );
+
+        let alreadyMatched = false;
+        let matchedTourItems = []; // Can match multiple items
+
+        // Check if already processed
+        if (entryId && matchedSheetIds.has(entryId)) {
+          alreadyMatched = true;
+          Logger.debug(
+            `Skipping Google Sheets entry "${entryName}" - ID already matched: ${entryId}`,
+          );
+        }
+
+        if (entryTag && matchedSheetTags.has(entryTag)) {
+          alreadyMatched = true;
+          Logger.debug(
+            `Skipping Google Sheets entry "${entryName}" - tag already matched: ${entryTag}`,
+          );
+        }
+
+        if (alreadyMatched) {
+          return;
+        }
+
+        // ENHANCED: Find ALL potential tour item matches
+        fuseData.forEach((item) => {
+          if (!item.item) return;
+
+          let isMatch = false;
+          let matchReason = "";
+
+          // Method 1: Exact ID match (highest confidence)
+          if (entryId && item.id && entryId.toString() === item.id.toString()) {
+            isMatch = true;
+            matchReason = "exact_id";
+          }
+
+          // Method 2: Tag match (medium confidence)
+          else if (
+            entryTag &&
+            Array.isArray(item.tags) &&
+            item.tags.includes(entryTag)
+          ) {
+            isMatch = true;
+            matchReason = "tag_match";
+          }
+
+          // Method 3: Label match (lower confidence, be careful)
+          else if (
+            entryName &&
+            item.originalLabel &&
+            entryName.toLowerCase() === item.originalLabel.toLowerCase()
+          ) {
+            isMatch = true;
+            matchReason = "label_match";
+          }
+
+          // Method 4: Media ID match (for items accessed via media)
+          else if (entryId && item.item && item.item.get) {
+            const media = item.item.get("media");
+            if (media && media.get) {
+              const mediaId = media.get("id");
+              if (mediaId === entryId) {
+                isMatch = true;
+                matchReason = "media_id";
+              }
+            }
+          }
+
+          if (isMatch) {
+            matchedTourItems.push({
+              item: item,
+              reason: matchReason,
+              confidence:
+                matchReason === "exact_id"
+                  ? 3
+                  : matchReason === "tag_match"
+                    ? 2
+                    : matchReason === "media_id"
+                      ? 2
+                      : 1,
+            });
+          }
+        });
+
+        if (matchedTourItems.length === 0) {
+          // No matches found - create standalone entry if enabled
+          if (!config.googleSheets.includeStandaloneEntries) {
+            Logger.debug(
+              `Skipping standalone Google Sheets entry "${entryName}" - standalone entries disabled`,
+            );
+            return;
+          }
+
+          Logger.debug(`Creating standalone Google Sheets entry: ${entryName}`);
+        } else if (matchedTourItems.length === 1) {
+          // Single match - straightforward
+          const match = matchedTourItems[0];
+          Logger.debug(
+            `Single match found for "${entryName}": ${match.item.label} (${match.reason})`,
+          );
+
+          if (config.googleSheets.useAsDataSource !== true) {
+            Logger.debug(
+              `Skipping Google Sheets entry "${entryName}" - tour item exists and not using as primary data source`,
+            );
+            return;
+          }
+        } else {
+          // Multiple matches - need resolution strategy
+          Logger.warn(
+            `Multiple matches found for Google Sheets entry "${entryName}" (${matchedTourItems.length} matches):`,
+          );
+          matchedTourItems.forEach((match) => {
+            Logger.warn(
+              `  - ${match.item.label} (${match.item.type}, ${match.reason}, confidence: ${match.confidence})`,
+            );
+          });
+
+          // Resolution: Use highest confidence match
+          matchedTourItems.sort((a, b) => b.confidence - a.confidence);
+          const bestMatch = matchedTourItems[0];
+
+          Logger.warn(
+            `Resolved to highest confidence match: ${bestMatch.item.label} (${bestMatch.reason})`,
+          );
+
+          if (config.googleSheets.useAsDataSource !== true) {
+            Logger.debug(
+              `Skipping Google Sheets entry "${entryName}" - tour item exists and not using as primary data source`,
+            );
+            return;
+          }
+        }
+
+        const displayLabel =
+          sheetsEntry.name || sheetsEntry.id || "Unknown Entry";
+        const description = sheetsEntry.description || "";
+        const elementType = sheetsEntry.elementType || "Element";
+
+        const elementTags = sheetsEntry.tag ? [sheetsEntry.tag] : [];
+        if (!_shouldIncludeElement(elementType, displayLabel, elementTags)) {
+          Logger.debug(
+            `Filtering out Google Sheets entry ${displayLabel} due to element filter`,
+          );
+          return;
+        }
+
+        // Mark as processed
+        if (entryId) matchedSheetIds.add(entryId);
+        if (entryTag) matchedSheetTags.add(entryTag);
+
+        // Determine best matched item for context
+        const bestMatchedItem =
+          matchedTourItems.length > 0
+            ? matchedTourItems.sort((a, b) => b.confidence - a.confidence)[0]
+                .item
+            : null;
+
+        // Create search index entry
+        fuseData.push({
+          type: elementType,
+          source: bestMatchedItem ? bestMatchedItem.source : "sheets",
+          label: displayLabel,
+          subtitle: description,
+          originalLabel: displayLabel,
+          tags: elementTags,
+          sheetsData: sheetsEntry,
+          imageUrl: sheetsEntry.imageUrl || null,
+          id: sheetsEntry.id,
+
+          parentIndex: bestMatchedItem ? bestMatchedItem.index : null,
+          originalIndex: bestMatchedItem ? bestMatchedItem.originalIndex : null,
+          playlistOrder: bestMatchedItem
+            ? bestMatchedItem.playlistOrder
+            : 10000 + sheetsIndex,
+          item: bestMatchedItem ? bestMatchedItem.item : null,
+
+          isStandalone: !bestMatchedItem,
+          isEnhanced: !!bestMatchedItem,
+          matchedItemsCount: matchedTourItems.length, // Track how many items this matched
+
+          boost: config.googleSheets.useAsDataSource
+            ? _config.searchSettings.boostValues.sheetsMatch
+            : _config.searchSettings.boostValues.labeledItem,
+          businessName: null,
+          businessData: null,
+        });
+
+        Logger.debug(
+          `Added Google Sheets entry: ${displayLabel} (matched ${matchedTourItems.length} tour items)`,
+        );
+      } catch (error) {
+        Logger.warn(
+          `Error processing Google Sheets entry at index ${sheetsIndex}:`,
+          error,
+        );
+      }
+    });
+  }
+
+  // [5.3] Business Data Loading Function
   function _loadBusinessData() {
     // Skip if business data is not enabled
     if (!_config.businessData.useBusinessData) {
@@ -3096,7 +4414,7 @@ function findBusinessMatch(tourElement) {
     }
 
     Logger.info(`Loading business data from: ${dataPath}`);
-    console.log("[BUSINESS DATA] Attempting to load from:", dataPath);
+    Logger.info("[BUSINESS DATA] Attempting to load from:", dataPath);
 
     // Fetch the business data file
     return fetch(dataPath)
@@ -3113,21 +4431,26 @@ function findBusinessMatch(tourElement) {
           Logger.warn("Business data is not an array, converting to array");
           data = [data];
         }
-        
-        // Add detailed logging
-        console.log("=== BUSINESS DATA LOADED ===");
-        console.log(`Successfully loaded ${data.length} business data entries`);
-        
-        // Log the first 3 entries to verify structure
+
+        // [5.3.1] Add detailed logging
+        Logger.info("=== BUSINESS DATA LOADED ===");
+        Logger.info(`Successfully loaded ${data.length} business data entries`);
+
+        // [5.3.1.1] Log the first 3 entries to verify structure
         for (let i = 0; i < Math.min(3, data.length); i++) {
-          console.log(`Entry ${i+1}:`, {
+          console.log(`Entry ${i + 1}:`, {
             id: data[i].id,
             name: data[i].name,
-            elementType: data[i].elementType
+            elementType: data[i].elementType,
           });
         }
-        
+
+        // [5.3.2] Store in module variable
         _businessData = data;
+
+        // [5.3.3] Also store globally for easy access
+        window._businessData = data;
+
         return data;
       })
       .catch((error) => {
@@ -3137,43 +4460,166 @@ function findBusinessMatch(tourElement) {
       });
   }
 
-  // [5.4] SEARCH FUNCTIONALITY
-  // [5.4.1] Search initialization
+  // [6.0] Search Functionality
   function _initializeSearch(tour) {
     Logger.info("Initializing enhanced search v2.0...");
-    window.tourInstance = tour;
 
-    // Reset the module-level search state variables
+    // [6.1.1] Handle case where 'tour' parameter might be rootPlayer instead of tour
+    let actualTour = tour;
+
+    // [6.1.1.1] If the passed parameter looks like a rootPlayer, try to get the actual tour
+    if (tour && typeof tour.get === "function") {
+      try {
+        const tourFromContext = tour.get("data")?.tour;
+        if (tourFromContext && tourFromContext.mainPlayList) {
+          actualTour = tourFromContext;
+          Logger.debug(
+            "Retrieved tour from rootPlayer context via get('data').tour",
+          );
+        }
+      } catch (e) {
+        Logger.debug(
+          "Could not extract tour from rootPlayer context, using passed parameter",
+        );
+      }
+    }
+
+    // [6.1.2] Additional fallback detection as per technical notes
+    if (!actualTour || !actualTour.mainPlayList) {
+      const tourCandidates = [
+        tour, // Original parameter
+        window.tour,
+        window.tourInstance,
+        window.tour &&
+        window.tour.locManager &&
+        window.tour.locManager.rootPlayer
+          ? window.tour.locManager.rootPlayer
+          : null,
+        // [6.1.2.1] Try via TDV API if available
+        window.TDV &&
+        window.TDV.PlayerAPI &&
+        typeof window.TDV.PlayerAPI.getCurrentPlayer === "function"
+          ? window.TDV.PlayerAPI.getCurrentPlayer()
+          : null,
+      ].filter(Boolean);
+
+      for (const candidate of tourCandidates) {
+        if (
+          candidate &&
+          candidate.mainPlayList &&
+          typeof candidate.mainPlayList.get === "function"
+        ) {
+          actualTour = candidate;
+          Logger.debug("Found valid tour via fallback detection");
+          break;
+        }
+      }
+    }
+    // [6.1.3] Validate tour has required functionality
+    if (!actualTour || !actualTour.mainPlayList) {
+      Logger.warn("Could not find valid tour reference with mainPlayList");
+    } else if (typeof actualTour.mainPlayList.get !== "function") {
+      Logger.warn("Tour found but mainPlayList.get is not a function");
+    } else {
+      Logger.info(
+        `Tour initialized successfully with ${actualTour.mainPlayList.get("items")?.length || 0} panoramas`,
+      );
+    }
+    // [6.1.4] Store the validated tour reference
+    window.tourInstance = actualTour;
+
+    // [6.1.5] Reset the module-level search state variables
     currentSearchTerm = ""; // Reset the module-level variable
     fuse = null;
 
-    // If already initialized, don't reinitialize
+    // [6.1.6] If already initialized, don't reinitialize
     if (_initialized) {
       Logger.info("Search already initialized.");
       return;
     }
 
-    // Flag as initialized
+    // [6.1.7] Flag as initialized
     _initialized = true;
     window.searchListInitialized = true;
 
-    // [5.4.1.1] Initialize BroadcastChannel for cross-window communication
+    // [6.1.8] Initialize BroadcastChannel for cross-window communication
     _crossWindowChannel.init();
 
-    // [5.4.1.2] Create a promise chain to load all external data sources
+    // [6.1.8.1] Add at the beginning of _initializeSearch function
+    function validateDataSourceConfiguration() {
+      const businessEnabled = _config.businessData?.useBusinessData;
+      const googleSheetsEnabled = _config.googleSheets?.useGoogleSheetData;
+      const localCSVEnabled = _config.googleSheets?.useLocalCSV;
+
+      let activeDataSources = 0;
+      let primaryDataSource = "tour"; // Tour data is always the base
+
+      if (businessEnabled) {
+        activeDataSources++;
+        primaryDataSource = "business";
+      }
+
+      if (googleSheetsEnabled) {
+        activeDataSources++;
+        primaryDataSource = localCSVEnabled ? "local-csv" : "google-sheets";
+      }
+
+      // CRITICAL: Ensure mutual exclusivity
+      if (activeDataSources > 1) {
+        Logger.warn(
+          "⚠️  CONFIGURATION CONFLICT: Multiple data sources enabled!",
+        );
+        Logger.warn("Active sources:", {
+          business: businessEnabled,
+          googleSheets: googleSheetsEnabled && !localCSVEnabled,
+          localCSV: googleSheetsEnabled && localCSVEnabled,
+        });
+        Logger.warn("🔧 FIX: Only enable ONE external data source at a time");
+
+        // Auto-fix: Disable conflicting sources (Business takes priority)
+        if (businessEnabled) {
+          _config.googleSheets.useGoogleSheetData = false;
+          Logger.warn(
+            "🚨 AUTO-FIX: Disabled Google Sheets to prevent conflicts",
+          );
+        }
+      }
+
+      // CRITICAL: Ensure Google Sheets vs Local CSV mutual exclusivity
+      if (
+        googleSheetsEnabled &&
+        localCSVEnabled &&
+        !_config.googleSheets.googleSheetUrl
+      ) {
+        Logger.warn(
+          "⚠️  LOCAL CSV MODE: Disabling online Google Sheets URL processing",
+        );
+      }
+
+      Logger.info(
+        `🎯 Data Source Priority: ${primaryDataSource.toUpperCase()} (+ tour data)`,
+      );
+      return primaryDataSource;
+    }
+
+    // Call validation before loading data
+    const primaryDataSource = validateDataSourceConfiguration();
+
+    // [6.1.9] Create a promise chain to load all external data sources
     const dataPromises = [];
 
-    // Load business data if enabled
+    // [6.1.9.1] Load business data if enabled
     if (_config.businessData.useBusinessData) {
       dataPromises.push(_loadBusinessData());
     }
 
-    // Load Google Sheets data if enabled
+    // [6.1.9.2] Load Google Sheets data if enabled
     if (_config.googleSheets.useGoogleSheetData) {
+      console.log("[DEBUG] Adding Google Sheets data loading to promise chain");
       dataPromises.push(_loadGoogleSheetsData());
     }
 
-    // [5.4.1.3] When all data sources are loaded (or failed gracefully), prepare the search index
+    // [6.1.10] When all data sources are loaded (or failed gracefully), prepare the search index
     Promise.all(dataPromises)
       .then(() => {
         Logger.info("All external data sources loaded successfully");
@@ -3185,7 +4631,7 @@ function findBusinessMatch(tourElement) {
         prepareFuse();
       });
 
-    // Set up listener for cross-window messages
+    // [6.1.11] Set up listener for cross-window messages
     _crossWindowChannel.listen(function (message) {
       try {
       } catch (error) {
@@ -3200,30 +4646,73 @@ function findBusinessMatch(tourElement) {
       return;
     }
 
-    // Add ARIA attributes to container
+    // [6.1.12] Add ARIA attributes to container
     _aria.setRole(_elements.container, "search");
     _aria.setLabel(_elements.container, "Tour search");
 
-    // Create search UI components if needed
+    // [6.1.13] Create search UI components if needed
     _createSearchInterface(_elements.container);
 
-    // Reset module-level search state variables
+    // [6.1.14] Reset module-level search state variables
     currentSearchTerm = ""; // Reset the module-level variable
     fuse = null;
 
+    // [6.2] Enhanced Search index preparation with proper tour detection
     /**
      * Prepares and returns a Fuse.js search index for the tour panoramas and overlays.
      * @param {object} tour - The tour object containing the main playlist.
      * @param {object} config - The search configuration object.
      * @returns {Fuse} The constructed Fuse.js instance for searching.
      */
-    // [5.4.1.4] Search index preparation
+
     function _prepareSearchIndex(tour, config) {
       try {
-        const items = tour.mainPlayList.get("items");
-        if (!items || !Array.isArray(items) || items.length === 0) {
-          throw new Error("Tour playlist items not available or empty");
+        Logger.info("Starting hybrid search index preparation...");
+        const processed3DModelObjects = new Set();
+
+        let actualTour = tour;
+
+        // [6.2.1] Use utility functions for robust playlist detection
+        const playlists = PlaylistUtils.getAllPlayLists(actualTour);
+        let mainPlaylistItems = playlists.main?.get("items");
+        let rootPlaylistItems = playlists.root?.get("items");
+
+        // [6.2.2] Validate we have at least one playlist
+        if (!mainPlaylistItems && !rootPlaylistItems) {
+          // [6.2.2.1] Fallback tour detection if playlists not found
+          const tourCandidates = [
+            window.tour,
+            window.tourInstance,
+            window.player,
+            window.TDV &&
+            window.TDV.PlayerAPI &&
+            typeof window.TDV.PlayerAPI.getCurrentPlayer === "function"
+              ? window.TDV.PlayerAPI.getCurrentPlayer()
+              : null,
+          ].filter(Boolean);
+
+          for (const candidate of tourCandidates) {
+            if (candidate === actualTour) continue; // Skip already checked tour
+
+            const candidatePlaylists = PlaylistUtils.getAllPlayLists(candidate);
+            if (candidatePlaylists.main || candidatePlaylists.root) {
+              actualTour = candidate;
+              mainPlaylistItems = candidatePlaylists.main?.get("items");
+              rootPlaylistItems = candidatePlaylists.root?.get("items");
+              Logger.info(`Using fallback tour with playlists from candidate`);
+              break;
+            }
+          }
         }
+
+        if (!mainPlaylistItems && !rootPlaylistItems) {
+          throw new Error("No valid playlist found with any method");
+        }
+
+        Logger.info(
+          `Found playlists - Main: ${mainPlaylistItems?.length || 0}, Root: ${rootPlaylistItems?.length || 0}`,
+        );
+
         const fuseData = [];
         const filterMode = config.filter.mode;
         const allowedValues = config.filter.allowedValues || [];
@@ -3232,216 +4721,1179 @@ function findBusinessMatch(tourElement) {
         const blacklistedMediaIndexes =
           config.filter.blacklistedMediaIndexes || [];
 
-        // Process each panorama in the tour
-        items.forEach((item, index) => {
-          try {
-            // Get media data safely
-            const media = item.get("media");
-            if (!media) {
-              Logger.warn(`No media found for item at index ${index}`);
-              return;
-            }
-            // Get panorama metadata
-            const data = _safeGetData(media);
-            const label = data?.label?.trim() || "";
-            const subtitle = data?.subtitle?.trim() || "";
-            // Apply content filtering
-            if (
-              !_shouldIncludePanorama(
-                label,
-                subtitle,
-                data?.tags,
+        // [6.2.3] Process main playlist items (panoramas, basic 3D models)
+        if (mainPlaylistItems && mainPlaylistItems.length > 0) {
+          Logger.info(
+            `Processing ${mainPlaylistItems.length} main playlist items...`,
+          );
+
+          mainPlaylistItems.forEach((item, index) => {
+            try {
+              const itemClass = item.get ? item.get("class") : item.class;
+              const media = item.get ? item.get("media") : item.media;
+              if (!media) {
+                Logger.warn(
+                  `No media found for main playlist item at index ${index}`,
+                );
+                return;
+              }
+
+              // [6.2.3.1] Process based on item type
+              processPlaylistItem(
+                item,
                 index,
-                filterMode,
-                allowedValues,
-                blacklistedValues,
-                allowedMediaIndexes,
-                blacklistedMediaIndexes,
-              )
-            ) {
-              return;
+                media,
+                "main",
+                fuseData,
+                config,
+                actualTour,
+              );
+            } catch (error) {
+              Logger.warn(
+                `Error processing main playlist item at index ${index}:`,
+                error,
+              );
             }
-            // Determine display label for the panorama
-            const displayLabel = _getDisplayLabel(label, subtitle, data?.tags);
+          });
+        }
 
-            // Check if we have business data for this panorama
-            let businessMatch = null;
-            let businessTag = null;
-            let businessName = null;
+        // [6.2.4] Process root player playlist items (detailed 3D model content)
+        if (rootPlaylistItems && rootPlaylistItems.length > 0) {
+          Logger.info(
+            `Processing ${rootPlaylistItems.length} root player playlist items...`,
+          );
 
-            // Check if we have Google Sheets data for this panorama
-            let sheetsMatch = null;
-            let sheetsData = null;
+          rootPlaylistItems.forEach((item, index) => {
+            try {
+              const itemClass = item.get ? item.get("class") : item.class;
+              const media = item.get ? item.get("media") : item.media;
+              if (!media) {
+                Logger.warn(
+                  `No media found for root playlist item at index ${index}`,
+                );
+                return;
+              }
 
-            // Only look for business match if enabled in config
-            if (config.businessData?.useBusinessData && _businessData.length > 0) {
-              try {
-                // Use the comprehensive matching function
-                businessMatch = findBusinessMatch({
-                  name: label,
-                  id: media.get ? media.get("id") : null,
-                  tags: data?.tags || []
-                });
+              // [6.2.4.1] Process with different source and offset index to avoid conflicts
+              const offsetIndex = (mainPlaylistItems?.length || 0) + index;
+              processPlaylistItem(
+                item,
+                offsetIndex,
+                media,
+                "root",
+                fuseData,
+                config,
+                actualTour,
+              );
+            } catch (error) {
+              Logger.warn(
+                `Error processing root playlist item at index ${index}:`,
+                error,
+              );
+            }
+          });
+        }
 
-                if (businessMatch) {
-                  Logger.debug(`Found business match for panorama ${label}: ${businessMatch.name}`);
-                  businessTag = businessMatch.tag || null;
-                  businessName = businessMatch.name || null;
-                }
-              } catch (error) {
-                Logger.warn(`Error matching business data for panorama ${label}:`, error);
+        // [6.2.5] Process Google Sheets data as standalone entries
+        if (
+          config.googleSheets?.useGoogleSheetData &&
+          _googleSheetsData.length > 0
+        ) {
+          Logger.info(
+            `Processing ${_googleSheetsData.length} Google Sheets entries for search index`,
+          );
+
+          // [6.2.5.1] Track which Google Sheets entries were already matched to tour items
+          const matchedSheetIds = new Set();
+          const matchedSheetTags = new Set();
+          const existingLabels = new Set();
+
+          // [6.2.5.2] First pass: identify ALL existing entries in the search index
+          fuseData.forEach((item) => {
+            if (item.label) {
+              existingLabels.add(item.label.toLowerCase());
+            }
+
+            if (item.sheetsData) {
+              if (item.sheetsData.id) {
+                matchedSheetIds.add(item.sheetsData.id);
+              }
+              if (item.sheetsData.tag) {
+                matchedSheetTags.add(item.sheetsData.tag);
               }
             }
 
-            // Only look for Google Sheets match if enabled in config
-            if (
-              config.googleSheets?.useGoogleSheetData &&
-              _googleSheetsData.length > 0
-            ) {
-              try {
-                // Look for a Google Sheets entry that matches this panorama
-                sheetsMatch = _googleSheetsData.find((entry) => {
-                  // Try to match by ID first (most accurate)
-                  const itemId = media.get("id") || "";
+            if (item.imageUrl && item.imageUrl.includes("unsplash")) {
+              if (item.label && item.label.startsWith("** ")) {
+                matchedSheetTags.add(item.label.replace("** ", ""));
+              }
+            }
+          });
+
+          _googleSheetsData.forEach((sheetsEntry, sheetsIndex) => {
+            try {
+              if (!sheetsEntry.id && !sheetsEntry.tag && !sheetsEntry.name) {
+                return;
+              }
+
+              const entryId = sheetsEntry.id;
+              const entryTag = sheetsEntry.tag;
+              const entryName = sheetsEntry.name;
+
+              let alreadyMatched = false;
+              let matchedTourItem = null;
+
+              // [6.2.5.3] Check by ID
+              if (entryId && matchedSheetIds.has(entryId)) {
+                alreadyMatched = true;
+                Logger.debug(
+                  `Skipping Google Sheets entry "${entryName}" - ID already matched: ${entryId}`,
+                );
+              }
+
+              // [6.2.5.4] Check by tag
+              if (entryTag && matchedSheetTags.has(entryTag)) {
+                alreadyMatched = true;
+                Logger.debug(
+                  `Skipping Google Sheets entry "${entryName}" - tag already matched: ${entryTag}`,
+                );
+              }
+
+              // [6.2.5.5] Check by exact label match (case-insensitive)
+              if (entryName && existingLabels.has(entryName.toLowerCase())) {
+                alreadyMatched = true;
+                Logger.debug(
+                  `Skipping Google Sheets entry "${entryName}" - label already exists in search index`,
+                );
+              }
+
+              // [6.2.5.6] Try to find a matching tour item for navigation
+              if (!alreadyMatched && entryTag) {
+                const tourItemMatch = fuseData.find((item) => {
+                  if (!item.item) return false;
+
                   if (
-                    entry.id &&
-                    itemId &&
-                    entry.id.toString() === itemId.toString()
+                    Array.isArray(item.tags) &&
+                    item.tags.includes(entryTag)
                   ) {
                     return true;
                   }
 
-                  // Then try tag matching (like business data)
+                  if (item.id && item.id === entryTag) {
+                    return true;
+                  }
+
                   if (
-                    entry.tag &&
-                    label &&
-                    label.toLowerCase().includes(entry.tag.toLowerCase())
+                    item.originalLabel &&
+                    item.originalLabel
+                      .toLowerCase()
+                      .includes(entryTag.toLowerCase())
                   ) {
                     return true;
                   }
 
-                  // Check element type if specified
-                  if (entry.elementType === "Panorama") {
-                    // Try exact label match as a fallback
-                    if (
-                      entry.name &&
-                      label &&
-                      entry.name.toLowerCase() === label.toLowerCase()
-                    ) {
-                      return true;
+                  if (item.item && item.item.get) {
+                    const media = item.item.get("media");
+                    if (media && media.get) {
+                      const mediaId = media.get("id");
+                      if (mediaId === entryTag) {
+                        return true;
+                      }
                     }
                   }
 
-                  // No match found
                   return false;
                 });
 
-                if (sheetsMatch) {
+                if (tourItemMatch) {
+                  matchedTourItem = tourItemMatch;
                   Logger.debug(
-                    `Found Google Sheets match for panorama ${label}: ${sheetsMatch.name}`,
+                    `Found tour item match for Google Sheets entry "${entryName}": enhancing existing item`,
                   );
-                  sheetsData = { ...sheetsMatch }; // Create a copy of the matched data
+
+                  if (config.googleSheets.useAsDataSource !== true) {
+                    Logger.debug(
+                      `Skipping standalone Google Sheets entry "${entryName}" - tour item exists and not using as primary data source`,
+                    );
+                    return;
+                  }
+
+                  Logger.debug(
+                    `Creating enhanced Google Sheets entry "${entryName}" linked to tour item`,
+                  );
                 }
-              } catch (error) {
-                Logger.warn(
-                  `Error matching Google Sheets data for panorama ${label}:`,
-                  error,
+              }
+
+              if (
+                !matchedTourItem &&
+                !config.googleSheets.includeStandaloneEntries
+              ) {
+                Logger.debug(
+                  `Skipping standalone Google Sheets entry "${entryName}" - standalone entries disabled`,
                 );
+                return;
               }
-            }
 
-            // Determine what data source to use for the display label
-            let resultLabel = displayLabel; // Default to tour's display label
-            let resultDescription = subtitle || ""; // Default to tour's subtitle
-
-            // Business data takes precedence if available
-            if (businessName) {
-              resultLabel = businessName;
-            }
-
-            // Google Sheets data overrides everything else if it's configured as primary data source
-            if (sheetsData && config.googleSheets.useAsDataSource) {
-              resultLabel = sheetsData.name || resultLabel;
-              resultDescription = sheetsData.description || resultDescription;
-            }
-            // Otherwise, Google Sheets data enhances but doesn't override existing data
-            else if (sheetsData) {
-              // Only use sheet data if the field is empty in tour data
-              if (!resultLabel && sheetsData.name) {
-                resultLabel = sheetsData.name;
+              if (alreadyMatched) {
+                return;
               }
-              if (!resultDescription && sheetsData.description) {
-                resultDescription = sheetsData.description;
+
+              const displayLabel =
+                sheetsEntry.name || sheetsEntry.id || "Unknown Entry";
+              const description = sheetsEntry.description || "";
+              const elementType = sheetsEntry.elementType || "Element";
+
+              const elementTags = sheetsEntry.tag ? [sheetsEntry.tag] : [];
+              if (
+                !_shouldIncludeElement(elementType, displayLabel, elementTags)
+              ) {
+                Logger.debug(
+                  `Filtering out Google Sheets entry ${displayLabel} due to element filter`,
+                );
+                return;
               }
+
+              existingLabels.add(displayLabel.toLowerCase());
+
+              // [6.2.5.7] Create search index entry for Google Sheets data
+              fuseData.push({
+                type: elementType,
+                source: matchedTourItem ? matchedTourItem.source : "sheets",
+                label: displayLabel,
+                subtitle: description,
+                originalLabel: displayLabel,
+                tags: elementTags,
+                sheetsData: sheetsEntry,
+                imageUrl: sheetsEntry.imageUrl || null,
+                id: sheetsEntry.id,
+
+                parentIndex: matchedTourItem ? matchedTourItem.index : null,
+                originalIndex: matchedTourItem
+                  ? matchedTourItem.originalIndex
+                  : null,
+                playlistOrder: matchedTourItem
+                  ? matchedTourItem.playlistOrder
+                  : 10000 + sheetsIndex,
+                item: matchedTourItem ? matchedTourItem.item : null,
+
+                isStandalone: !matchedTourItem,
+                isEnhanced: !!matchedTourItem,
+
+                boost: config.googleSheets.useAsDataSource
+                  ? _config.searchSettings.boostValues.sheetsMatch
+                  : _config.searchSettings.boostValues.labeledItem,
+                businessName: null,
+                businessData: null,
+              });
+
+              Logger.debug(
+                `Added ${matchedTourItem ? "linked" : "standalone"} Google Sheets entry: ${displayLabel}`,
+              );
+            } catch (error) {
+              Logger.warn(
+                `Error processing Google Sheets entry at index ${sheetsIndex}:`,
+                error,
+              );
             }
+          });
+        }
 
-            // Add panorama to search index with all data sources integrated
-            // Fix: Use the proper replacement based on config setting
-            const useBusiness = businessMatch && _config.businessData.replaceTourData === true;
-
-            // Add panorama to search index with all data sources integrated
-            fuseData.push({
-              // If replaceTourData is true, use "Panorama" type, otherwise use "Business" type
-              type: useBusiness ? "Panorama" : (businessMatch ? "Business" : "Panorama"),
-              index,
-              playlistOrder: index,
-              // Use business data if available and replaceTourData is true
-              label: useBusiness ? businessMatch?.name : resultLabel,
-              originalLabel: label,
-              subtitle: useBusiness ? (businessMatch?.description || "") : resultDescription,
-              tags: Array.isArray(data?.tags) ? data.tags : [],
-              // Include all business data
-              businessData: businessMatch,
-              businessName: businessMatch?.name,
-              // Image URL prioritization
-              imageUrl: businessMatch?.imageUrl || sheetsData?.imageUrl || null,
-              item,
-              // Boost factors
-              boost: businessMatch ? 2.0 : (sheetsData ? 2.5 : (label ? 1.5 : 1.0)),
-            });
-            // Process overlay elements (hotspots, etc.)
-            const overlays = _getOverlays(media, tour, item);
-            _processOverlays(overlays, fuseData, index, displayLabel);
-          } catch (error) {
-            Logger.warn(`Error processing item at index ${index}:`, error);
-          }
-        });
-        // Create Fuse.js search index
+        // [6.2.6] Create and return Fuse instance
         const fuseInstance = new Fuse(fuseData, {
           keys: [
-            { name: "label", weight: 1 },
-            { name: "subtitle", weight: 0.8 },
-            { name: "tags", weight: 0.6 },
-            { name: "parentLabel", weight: 0.3 },
-            { name: "businessTag", weight: 0.7 },
-            { name: "businessName", weight: 0.9 },
+            {
+              name: "label",
+              weight: _config.searchSettings.fieldWeights.label,
+            },
+            {
+              name: "subtitle",
+              weight: _config.searchSettings.fieldWeights.subtitle,
+            },
+            { name: "tags", weight: _config.searchSettings.fieldWeights.tags },
+            {
+              name: "parentLabel",
+              weight: _config.searchSettings.fieldWeights.parentLabel,
+            },
+            {
+              name: "businessTag",
+              weight: _config.searchSettings.fieldWeights.businessTag,
+            },
+            {
+              name: "businessName",
+              weight: _config.searchSettings.fieldWeights.businessName,
+            },
           ],
-          includeScore: true,
-          threshold: 0.4,
-          distance: 40,
-          minMatchCharLength: 1,
-          useExtendedSearch: true,
-          ignoreLocation: true,
-          location: 0,
+          includeScore: _config.searchSettings.behavior.includeScore,
+          threshold: _config.searchSettings.behavior.threshold,
+          distance: _config.searchSettings.behavior.distance,
+          minMatchCharLength:
+            _config.searchSettings.behavior.minMatchCharLength,
+          useExtendedSearch: _config.searchSettings.behavior.useExtendedSearch,
+          ignoreLocation: _config.searchSettings.behavior.ignoreLocation,
+          location: _config.searchSettings.behavior.location,
         });
-        Logger.info(`Indexed ${fuseData.length} items for search`);
+
+        Logger.info(
+          `Hybrid search index created with ${fuseData.length} total items`,
+        );
+        Logger.info(
+          `Main playlist contributed: ${mainPlaylistItems?.length || 0} items`,
+        );
+        Logger.info(
+          `Root playlist contributed: ${rootPlaylistItems?.length || 0} items`,
+        );
+
         return fuseInstance;
       } catch (error) {
-        Logger.error("Error preparing Fuse index:", error);
-        // Create an empty fuse instance as fallback
-        return new Fuse([], {
-          keys: ["label"],
-          includeScore: true,
-        });
+        Logger.error("Error preparing hybrid search index:", error);
+        return new Fuse([], { keys: ["label"], includeScore: true });
       }
     }
 
-    // Initialize search index
+    // Find the processPlaylistItem function and replace it entirely:
+
+    // [6.3] Helper function to process individual playlist items
+    function processPlaylistItem(
+      item,
+      index,
+      media,
+      source,
+      fuseData,
+      config,
+      tour,
+    ) {
+      const itemClass = item.get ? item.get("class") : item.class;
+
+      Logger.debug(
+        `[PLAYLIST DEBUG] Processing item ${index}, class:`,
+        itemClass,
+      );
+
+      // [6.3.1] Handle 3D Models
+      if (itemClass === "Model3DPlayListItem") {
+        Logger.debug(`[PLAYLIST DEBUG] Found 3D Model at index ${index}`);
+        process3DModel(item, index, media, source, fuseData, config, tour);
+      } else {
+        processPanorama(item, index, media, source, fuseData, config, tour);
+      }
+    }
+
+    // [6.4] Helper function to process 3D models
+    function process3DModel(
+      item,
+      index,
+      media,
+      source,
+      fuseData,
+      config,
+      tour,
+    ) {
+      Logger.debug(`[3D DEBUG] Processing 3D model at index ${index}`);
+
+      const data = _safeGetData(media);
+      const label = data?.label?.trim() || "";
+      const subtitle = data?.subtitle?.trim() || "";
+      const tags = Array.isArray(data?.tags) ? data.tags : [];
+
+      // [6.4.1] Apply content filtering
+      if (
+        !_shouldIncludePanorama(
+          label,
+          subtitle,
+          tags,
+          index,
+          config.filter.mode,
+          config.filter.allowedValues,
+          config.filter.blacklistedValues,
+          config.filter.allowedMediaIndexes,
+          config.filter.blacklistedMediaIndexes,
+        )
+      ) {
+        Logger.debug(`[3D DEBUG] 3D model filtered out at index ${index}`);
+        return;
+      }
+
+      const displayLabel = _getDisplayLabel(label, subtitle, tags, {
+        type: "Panorama",
+        id: media.get ? media.get("id") : media.id,
+        index: index,
+        source: source,
+      });
+
+      // Get business and sheets matches
+      const businessMatch = getBusinessMatch(label, media, tags, config);
+      const sheetsMatch = getSheetsMatch(label, media, tags, config);
+
+      // [6.4.3] Add 3D Model to search index
+      fuseData.push({
+        type: "3DModel",
+        source: source,
+        index,
+        originalIndex: index,
+        playlistOrder: index,
+        label: getResultLabel(displayLabel, businessMatch, sheetsMatch, config),
+        originalLabel: label,
+        subtitle: getResultDescription(
+          subtitle,
+          businessMatch,
+          sheetsMatch,
+          config,
+        ),
+        tags,
+        businessData: businessMatch,
+        businessName: businessMatch?.name,
+        sheetsData: sheetsMatch,
+        imageUrl: businessMatch?.imageUrl || sheetsMatch?.imageUrl || null,
+        item,
+        boost: businessMatch
+          ? _config.searchSettings.boostValues.businessMatch
+          : sheetsMatch
+            ? _config.searchSettings.boostValues.sheetsMatch
+            : label
+              ? _config.searchSettings.boostValues.labeledItem
+              : _config.searchSettings.boostValues.unlabeledItem,
+      });
+
+      Logger.debug(`[3D DEBUG] Added 3D model to index: ${displayLabel}`);
+
+      // [6.4.4] Process objects inside the 3D model
+      const objects = media.get ? media.get("objects") : media.objects;
+      Logger.debug(`[3D DEBUG] Found objects:`, objects);
+      Logger.debug(`[3D DEBUG] Objects is array:`, Array.isArray(objects));
+
+      if (Array.isArray(objects)) {
+        Logger.debug(`[3D DEBUG] Processing ${objects.length} objects`);
+
+        objects.forEach((obj, objIdx) => {
+          Logger.debug(`[3D DEBUG] Processing object ${objIdx}:`, obj);
+
+          const objData = _safeGetData(obj);
+
+          // Get object label with multiple fallbacks
+          let objLabel = objData?.label?.trim() || "";
+          if (!objLabel && obj.get) {
+            try {
+              objLabel = obj.get("label") || "";
+            } catch (e) {
+              Logger.debug(`[3D DEBUG] Error getting label via get():`, e);
+            }
+          }
+          if (!objLabel) {
+            objLabel = obj.label || "";
+          }
+
+          Logger.debug(`[3D DEBUG] Object label:`, objLabel);
+
+          // Skip if no valid label
+          if (!objLabel || objLabel === "Object") {
+            Logger.debug(
+              `[3D DEBUG] Skipping object with invalid label:`,
+              objLabel,
+            );
+            return;
+          }
+
+          const objTags = Array.isArray(objData?.tags) ? objData.tags : [];
+
+          // FIX: Use _getElementType to properly detect the object type
+          // Get the class of the object to determine its actual type
+          let objClass = "";
+          if (obj.class) {
+            objClass = obj.class;
+          } else if (obj.get && typeof obj.get === "function") {
+            try {
+              objClass = obj.get("class") || "";
+            } catch (e) {
+              Logger.debug("[3D DEBUG] Error getting class via get():", e);
+            }
+          }
+
+          // Determine the correct element type based on class
+          let elementType = "3DModelObject"; // default
+          if (objClass) {
+            // Check if it's a sprite type
+            if (
+              objClass === "SpriteModel3DObject" ||
+              objClass === "SpriteHotspotObject" ||
+              objClass === "Sprite3DObject"
+            ) {
+              elementType = "3DHotspot";
+              Logger.debug(
+                `[3D DEBUG] Detected sprite object as 3DHotspot: ${objLabel}`,
+              );
+            } else if (
+              objClass === "InnerModel3DObject" ||
+              objClass === "Model3DObject"
+            ) {
+              elementType = "3DModelObject";
+            } else {
+              // Use the general element type detection for unknown classes
+              elementType = _getElementType(obj, objLabel);
+            }
+          }
+
+          if (!_shouldIncludeElement(elementType, objLabel, objTags)) {
+            Logger.debug(`[3D DEBUG] Object filtered out:`, objLabel);
+            return;
+          }
+
+          const objId = obj.get ? obj.get("id") : obj.id;
+
+          Logger.debug(
+            `[3D DEBUG] Adding object to search index with type ${elementType}:`,
+            objLabel,
+          );
+
+          fuseData.push({
+            type: elementType,
+            source: source,
+            label: objLabel,
+            subtitle: objData?.subtitle || "",
+            tags: objTags,
+            parentModel: media.get ? media.get("id") : media.id,
+            parentLabel: getResultLabel(
+              displayLabel,
+              businessMatch,
+              sheetsMatch,
+              config,
+            ),
+            parentIndex: index,
+            playlistOrder: index * 1000 + objIdx,
+            id: objId,
+            item: obj,
+            parentItem: item,
+            boost: _config.searchSettings.boostValues.childElement,
+          });
+        });
+      } else {
+        Logger.debug(`[3D DEBUG] No objects array found`);
+      }
+    }
+
+    // [6.5] Helper function to process panoramas
+    function processPanorama(
+      item,
+      index,
+      media,
+      source,
+      fuseData,
+      config,
+      tour,
+    ) {
+      const data = _safeGetData(media);
+      const label = data?.label?.trim() || "";
+      const subtitle = data?.subtitle?.trim() || "";
+      const tags = Array.isArray(data?.tags) ? data.tags : [];
+
+      console.log(`[PANORAMA DEBUG] Processing panorama ${index}:`, {
+        label,
+        subtitle,
+        tags,
+        mediaId: media.get ? media.get("id") : "unknown",
+      });
+
+      // [6.5.1] Apply content filtering
+      if (
+        !_shouldIncludePanorama(
+          label,
+          subtitle,
+          tags,
+          index,
+          config.filter.mode,
+          config.filter.allowedValues,
+          config.filter.blacklistedValues,
+          config.filter.allowedMediaIndexes,
+          config.filter.blacklistedMediaIndexes,
+        )
+      ) {
+        return;
+      }
+
+      const displayLabel = _getDisplayLabel(label, subtitle, tags, {
+        type: "Panorama",
+        id: media.get ? media.get("id") : media.id,
+        index: index,
+        source: source,
+      });
+
+      // Enhanced business matching with subtitle support
+      const businessMatch = getBusinessMatch(label, media, tags, config);
+      const sheetsMatch = getSheetsMatch(label, media, tags, config);
+
+      // CRITICAL FIX: Calculate display label AFTER getting business/sheets data
+      let finalDisplayLabel;
+      if (businessMatch && config.businessData.replaceTourData) {
+        finalDisplayLabel =
+          businessMatch.name || label || `Panorama ${index + 1}`;
+      } else if (sheetsMatch && config.googleSheets.useAsDataSource) {
+        finalDisplayLabel =
+          sheetsMatch.name || label || `Panorama ${index + 1}`;
+      } else {
+        // Use the proper label fallback system for tour data
+        finalDisplayLabel = _getDisplayLabel(label, subtitle, tags, {
+          type: "Panorama",
+          id: media.get ? media.get("id") : media.id,
+          index: index,
+          source: source,
+        });
+      }
+
+      // [6.5.2.1] Extract thumbnail URL for panoramas
+          
+      let thumbnailUrl = null;
+        try {
+          if (media && media.get) {
+            thumbnailUrl = media.get("thumbnail") || media.get("firstFrame") || media.get("preview");
+            Logger.debug(`[THUMBNAIL] Extracted URL from panorama: ${thumbnailUrl}`);
+          }
+        } catch (e) {
+          Logger.debug("Error extracting panorama thumbnail:", e);
+        }
+
+      // [6.5.3] Add panorama to search index
+      fuseData.push({
+        type: "Panorama",
+        source: source,
+        index,
+        originalIndex: index,
+        playlistOrder: index,
+        label: finalDisplayLabel,
+        originalLabel: label,
+        subtitle: getResultDescription(
+          subtitle,
+          businessMatch,
+          sheetsMatch,
+          config,
+        ),
+        tags,
+        businessData: businessMatch,
+        businessName: businessMatch?.name,
+        sheetsData: sheetsMatch,
+        imageUrl: businessMatch?.imageUrl || sheetsMatch?.imageUrl || null,
+        thumbnailUrl: thumbnailUrl, 
+        item,
+        media: media,
+        boost: businessMatch
+          ? _config.searchSettings.boostValues.businessMatch
+          : sheetsMatch
+            ? _config.searchSettings.boostValues.sheetsMatch
+            : label
+              ? _config.searchSettings.boostValues.labeledItem
+              : _config.searchSettings.boostValues.unlabeledItem,
+      });
+
+      // [6.5.4] Process overlays in the panorama
+      const overlays = _getOverlays(media, tour, item);
+      _processOverlaysWithSource(
+        overlays,
+        fuseData,
+        index,
+        displayLabel,
+        source,
+        config,
+      );
+    }
+
+    // [6.6] Overlay processing function with source tracking
+    function _processOverlaysWithSource(
+      overlays,
+      fuseData,
+      parentIndex,
+      parentLabel,
+      source,
+      config,
+    ) {
+      if (!Array.isArray(overlays) || overlays.length === 0) {
+        return;
+      }
+
+      overlays.forEach((overlay, overlayIndex) => {
+        try {
+          const overlayData = _safeGetData(overlay);
+
+          // [6.6.1] Get overlay label
+          let overlayLabel = "";
+          if (overlayData.label) {
+            overlayLabel = overlayData.label.trim();
+          } else if (overlay.label) {
+            overlayLabel = overlay.label.trim();
+          } else if (typeof overlay.get === "function") {
+            try {
+              const label = overlay.get("label");
+              if (label) overlayLabel = label.trim();
+            } catch {
+              // [6.6.1.1] Silent failure if label retrieval fails
+            }
+          }
+
+          // [6.6.2] Skip if empty label and configured to do so
+          if (!overlayLabel && config.includeContent.elements.skipEmptyLabels)
+            return;
+
+          // [6.6.3] Get element type and apply filtering
+          let elementType = _getElementType(overlay, overlayLabel);
+          const elementTags = Array.isArray(overlayData.tags)
+            ? overlayData.tags
+            : [];
+
+          if (!_shouldIncludeElement(elementType, overlayLabel, elementTags)) {
+            return;
+          }
+
+          // Get element ID
+          let elementId = null;
+          if (overlay.id) {
+            elementId = overlay.id;
+          } else if (typeof overlay.get === "function") {
+            try {
+              elementId = overlay.get("id");
+            } catch {
+              // Silent failure
+            }
+          }
+
+          const overlaySubtitle = overlayData?.subtitle || "";
+
+          // Get business match FIRST
+          let businessMatch = null;
+          if (
+            config.businessData?.useBusinessData &&
+            _businessData.length > 0
+          ) {
+            try {
+              businessMatch = findBusinessMatch({
+                name: overlayLabel,
+                id: elementId,
+                subtitle: overlaySubtitle, // Include subtitle for matching
+                tags: elementTags,
+                type: elementType,
+              });
+            } catch (error) {
+              Logger.warn(
+                `Error matching business data for overlay ${overlayLabel}:`,
+                error,
+              );
+            }
+          }
+
+          // Get sheets match
+          const sheetsMatch = getSheetsMatch(
+            overlayLabel,
+            overlay,
+            elementTags,
+            config,
+            {
+              type: elementType,
+              source: source,
+              index: overlayIndex,
+            },
+          );
+
+          // [6.6.4] Determine final display label
+          let finalDisplayLabel;
+          if (businessMatch && config.businessData.replaceTourData) {
+            finalDisplayLabel =
+              businessMatch.name ||
+              overlayLabel ||
+              `${elementType} ${parentIndex}.${overlayIndex}`;
+          } else if (sheetsMatch && config.googleSheets.useAsDataSource) {
+            finalDisplayLabel =
+              sheetsMatch.name ||
+              overlayLabel ||
+              `${elementType} ${parentIndex}.${overlayIndex}`;
+          } else {
+            // Use the proper label fallback system for tour data
+            finalDisplayLabel = _getDisplayLabel(
+              overlayLabel,
+              overlaySubtitle,
+              elementTags,
+              {
+                type: elementType,
+                id: elementId,
+                index: overlayIndex,
+                parentIndex: parentIndex,
+                parentLabel: parentLabel,
+              },
+            );
+          }
+
+          // [6.6.7] Add to search data with source tracking
+          fuseData.push({
+            type: elementType,
+            source: source,
+            label: finalDisplayLabel, // Use the properly calculated label
+            subtitle:
+              businessMatch && config.businessData.replaceTourData
+                ? businessMatch.description || ""
+                : sheetsMatch && config.googleSheets.useAsDataSource
+                  ? sheetsMatch.description || overlaySubtitle || ""
+                  : overlaySubtitle || "",
+            tags: elementTags,
+            parentIndex: parentIndex,
+            parentLabel: parentLabel,
+            playlistOrder: parentIndex * 1000 + overlayIndex,
+            id: elementId,
+            businessData: businessMatch,
+            businessName: businessMatch?.name,
+            sheetsData: sheetsMatch,
+            imageUrl: businessMatch?.imageUrl || sheetsMatch?.imageUrl || null,
+            localImage: businessMatch?.localImage || null,
+            boost: businessMatch
+              ? _config.searchSettings.boostValues.businessMatch
+              : sheetsMatch
+                ? _config.searchSettings.boostValues.sheetsMatch
+                : overlayLabel
+                  ? _config.searchSettings.boostValues.labeledItem
+                  : _config.searchSettings.boostValues.unlabeledItem,
+          });
+        } catch (overlayError) {
+          Logger.warn(
+            `Error processing overlay at index ${overlayIndex}:`,
+            overlayError,
+          );
+        }
+      });
+    }
+
+    // [6.7] Enhanced click handler for hybrid search results
+    function createHybridClickHandler(result, tour) {
+      return function () {
+        try {
+          Logger.info(
+            `Handling click for ${result.item.type} from ${result.item.source} playlist`,
+          );
+
+          // [6.7.1] Determine which playlist to use based on source
+          let targetPlaylist = null;
+
+          if (result.item.source === "main") {
+            // [6.7.1.1] Use the main playlist for navigation
+            targetPlaylist = tour.mainPlayList;
+            Logger.info("Using main playlist for navigation");
+          } else if (result.item.source === "root") {
+            // [6.7.1.2] Use the root player playlist for detailed 3D content
+            if (
+              tour.locManager &&
+              tour.locManager.rootPlayer &&
+              tour.locManager.rootPlayer.mainPlayList
+            ) {
+              targetPlaylist = tour.locManager.rootPlayer.mainPlayList;
+              Logger.info("Using root player playlist for navigation");
+            } else {
+              // [6.7.1.3] Fallback to main playlist if root not available
+              targetPlaylist = tour.mainPlayList;
+              Logger.warn(
+                "Root playlist not available, falling back to main playlist",
+              );
+            }
+          }
+
+          if (!targetPlaylist) {
+            Logger.error("No valid playlist found for navigation");
+            return;
+          }
+
+          // [6.7.2] Handle different result types
+          if (
+            result.item.type === "Panorama" ||
+            result.item.type === "3DModel"
+          ) {
+            // [6.7.2.1] Direct navigation for panoramas and 3D models
+            if (typeof result.item.originalIndex === "number") {
+              try {
+                targetPlaylist.set("selectedIndex", result.item.originalIndex);
+                Logger.info(
+                  `Navigated to ${result.item.type} at index ${result.item.originalIndex} using ${result.item.source} playlist`,
+                );
+              } catch (e) {
+                Logger.error(
+                  `Error navigating to ${result.item.type}: ${e.message}`,
+                );
+              }
+            }
+          } else if (result.item.type === "3DModelObject") {
+            // [6.7.2.2] For 3D model objects, navigate to parent model first, then trigger object
+            if (
+              result.item.parentIndex !== undefined &&
+              result.item.parentItem
+            ) {
+              try {
+                // [6.7.2.2.1] Navigate to the parent 3D model
+                targetPlaylist.set("selectedIndex", result.item.parentIndex);
+                Logger.info(
+                  `Navigated to parent 3D model at index ${result.item.parentIndex}`,
+                );
+
+                // [6.7.2.2.2] Then trigger the specific object after a delay
+                setTimeout(() => {
+                  if (result.item.id) {
+                    _triggerElement(tour, result.item.id, (success) => {
+                      if (success) {
+                        Logger.info(
+                          `Successfully triggered 3D object ${result.item.id}`,
+                        );
+                      } else {
+                        Logger.warn(
+                          `Failed to trigger 3D object ${result.item.id}`,
+                        );
+                      }
+                    });
+                  }
+                }, 500); // Delay for 3D model loading
+              } catch (e) {
+                Logger.error(
+                  `Error navigating to parent 3D model: ${e.message}`,
+                );
+              }
+            }
+          } else if (result.item.parentIndex !== undefined) {
+            // [6.7.2.3] For other child elements (hotspots, etc.), navigate to parent then trigger
+            try {
+              targetPlaylist.set("selectedIndex", result.item.parentIndex);
+              Logger.info(
+                `Navigated to parent panorama at index ${result.item.parentIndex}`,
+              );
+
+              if (result.item.id) {
+                setTimeout(() => {
+                  _triggerElement(tour, result.item.id, (success) => {
+                    if (success) {
+                      Logger.info(
+                        `Successfully triggered element ${result.item.id}`,
+                      );
+                    } else {
+                      Logger.warn(
+                        `Failed to trigger element ${result.item.id}`,
+                      );
+                    }
+                  });
+                }, 300);
+              }
+            } catch (e) {
+              Logger.error(`Error navigating to parent panorama: ${e.message}`);
+            }
+          }
+
+          // [6.7.3] Handle standalone Google Sheets entries
+          if (result.item.isStandalone && result.item.sheetsData) {
+            const success = _triggerStandaloneElement(result.item, tour);
+            if (!success) {
+              Logger.warn(
+                `Could not navigate to standalone entry: ${result.item.label}`,
+              );
+            }
+          }
+        } catch (error) {
+          Logger.error(`Error in hybrid click handler: ${error.message}`);
+        }
+      };
+    }
+
+    // [6.8] Helper functions for business and sheets matching
+    function getBusinessMatch(label, media, tags, config) {
+      if (!config.businessData?.useBusinessData || !_businessData.length)
+        return null;
+
+      try {
+        // Get subtitle from media data - THIS IS THE KEY FIX
+        const mediaData = _safeGetData(media);
+        const subtitle = mediaData?.subtitle?.trim() || "";
+
+        console.log(
+          `[DEBUG] Business match for ${label || subtitle || "unknown"} :`,
+          findBusinessMatch({
+            name: label,
+            id: media.get ? media.get("id") : media.id,
+            subtitle: subtitle, // Make sure subtitle is passed
+            tags: tags || [],
+          }),
+        );
+
+        return findBusinessMatch({
+          name: label,
+          id: media.get ? media.get("id") : media.id,
+          subtitle: subtitle, // Make sure subtitle is passed
+          tags: tags || [],
+        });
+      } catch (error) {
+        Logger.warn(`Error matching business data:`, error);
+        return null;
+      }
+    }
+
+    // [6.8.2] Get Google Sheets match for tour item
+    function getSheetsMatch(label, media, tags, config, tourItemContext) {
+      if (!config.googleSheets?.useGoogleSheetData || !_googleSheetsData.length)
+        return null;
+
+      try {
+        const itemId = media.get ? media.get("id") : media.id;
+
+        // [6.8.2.1] Create a comprehensive context for matching
+        const matchContext = {
+          label: label || "",
+          itemId: itemId || "",
+          tags: tags || [],
+          source: tourItemContext?.source || "unknown",
+          index: tourItemContext?.index || -1,
+          elementType: tourItemContext?.type || "unknown",
+        };
+
+        Logger.debug(
+          `[SHEETS MATCH] Looking for match for: ${matchContext.label} (ID: ${matchContext.itemId}, Type: ${matchContext.elementType})`,
+        );
+
+        // [6.8.2.2] Find all potential matches
+        const potentialMatches = _googleSheetsData.filter((entry) => {
+          // [6.8.2.2.1] Method 1: Exact ID match (highest priority)
+          if (
+            entry.id &&
+            matchContext.itemId &&
+            entry.id.toString() === matchContext.itemId.toString()
+          ) {
+            Logger.debug(`[SHEETS MATCH] Found exact ID match: ${entry.id}`);
+            return true;
+          }
+
+          // [6.8.2.2.2] Method 2: Tag-based matching (medium priority)
+          if (
+            entry.tag &&
+            matchContext.label &&
+            matchContext.label.toLowerCase().includes(entry.tag.toLowerCase())
+          ) {
+            Logger.debug(
+              `[SHEETS MATCH] Found tag match: ${entry.tag} in ${matchContext.label}`,
+            );
+            return true;
+          }
+
+          // [6.8.2.2.3] Method 3: Exact name matching (lower priority, but still useful)
+          if (
+            entry.name &&
+            matchContext.label &&
+            entry.name.toLowerCase() === matchContext.label.toLowerCase()
+          ) {
+            Logger.debug(
+              `[SHEETS MATCH] Found exact name match: ${entry.name}`,
+            );
+            return true;
+          }
+
+          return false;
+        });
+
+        if (potentialMatches.length === 0) {
+          Logger.debug(
+            `[SHEETS MATCH] No matches found for: ${matchContext.label}`,
+          );
+          return null;
+        }
+
+        if (potentialMatches.length === 1) {
+          Logger.debug(
+            `[SHEETS MATCH] Single match found: ${potentialMatches[0].name || potentialMatches[0].id}`,
+          );
+          return potentialMatches[0];
+        }
+
+        // [6.8.2.3] Multiple matches found - need to resolve ambiguity
+        Logger.warn(
+          `[SHEETS MATCH] Multiple matches found for ${matchContext.label} (${potentialMatches.length} matches)`,
+        );
+
+        // [6.8.2.3.1] Resolution strategy 1: Prefer exact ID matches
+        const exactIdMatches = potentialMatches.filter(
+          (entry) =>
+            entry.id &&
+            matchContext.itemId &&
+            entry.id.toString() === matchContext.itemId.toString(),
+        );
+
+        if (exactIdMatches.length === 1) {
+          Logger.info(
+            `[SHEETS MATCH] Resolved to exact ID match: ${exactIdMatches[0].id}`,
+          );
+          return exactIdMatches[0];
+        }
+
+        // [6.8.2.3.2] Resolution strategy 2: Prefer matches that specify element type
+        const typeSpecificMatches = potentialMatches.filter(
+          (entry) =>
+            entry.elementType &&
+            entry.elementType.toLowerCase() ===
+              matchContext.elementType.toLowerCase(),
+        );
+
+        if (typeSpecificMatches.length === 1) {
+          Logger.info(
+            `[SHEETS MATCH] Resolved to type-specific match: ${typeSpecificMatches[0].name} (${typeSpecificMatches[0].elementType})`,
+          );
+          return typeSpecificMatches[0];
+        }
+
+        // [6.8.2.3.3] Resolution strategy 3: Prefer matches with more specific data
+        const detailedMatches = potentialMatches.filter(
+          (entry) => entry.description && entry.description.length > 10, // Has substantial description
+        );
+
+        if (detailedMatches.length === 1) {
+          Logger.info(
+            `[SHEETS MATCH] Resolved to detailed match: ${detailedMatches[0].name}`,
+          );
+          return detailedMatches[0];
+        }
+
+        // [6.8.2.3.4] Resolution strategy 4: Log ambiguity and return first match
+        Logger.warn(
+          `[SHEETS MATCH] Could not resolve ambiguity for ${matchContext.label}. Using first match: ${potentialMatches[0].name}`,
+        );
+        Logger.warn(
+          `[SHEETS MATCH] Consider adding unique IDs or elementType to Google Sheets for better matching`,
+        );
+
+        return potentialMatches[0];
+      } catch (error) {
+        Logger.warn(`[SHEETS MATCH] Error matching Google Sheets data:`, error);
+        return null;
+      }
+    }
+
+    // [6.8.3] Helper to get result label from various data sources
+    function getResultLabel(displayLabel, businessMatch, sheetsMatch, config) {
+      if (businessMatch && config.businessData.replaceTourData) {
+        return businessMatch.name || displayLabel;
+      }
+      if (sheetsMatch && config.googleSheets.useAsDataSource) {
+        return sheetsMatch.name || displayLabel;
+      }
+      if (businessMatch) {
+        return businessMatch.name || displayLabel;
+      }
+      return displayLabel;
+    }
+
+    // [6.8.4] Helper to get result description from various data sources
+    function getResultDescription(
+      subtitle,
+      businessMatch,
+      sheetsMatch,
+      config,
+    ) {
+      if (businessMatch && config.businessData.replaceTourData) {
+        return businessMatch.description || "";
+      }
+      if (sheetsMatch && config.googleSheets.useAsDataSource) {
+        return sheetsMatch.description || subtitle || "";
+      }
+      return subtitle || "";
+    }
+
+    // [6.9] Initialize search index
     function prepareFuse() {
       fuse = _prepareSearchIndex(tour, _config);
     }
 
-    // Helper for safely getting object data
+    // [6.10] Helper for safely getting object data
     function _safeGetData(obj) {
       if (!obj) return {};
 
@@ -3456,8 +5908,34 @@ function findBusinessMatch(tourElement) {
         return {};
       }
     }
+    // [6.11] Google Sheets matching helper function
+    function getSheetsMatch(
+      overlayLabel,
+      overlay,
+      elementTags,
+      config,
+      context,
+    ) {
+      if (!_googleSheetsData || !_googleSheetsData.length) {
+        return null;
+      }
 
-    // Helper to check if a panorama should be included
+      const overlayId = overlay.id || (overlay.get ? overlay.get("id") : "");
+
+      // Try to match by ID or tag
+      for (const entry of _googleSheetsData) {
+        if (
+          entry.id === overlayId ||
+          entry.tag === overlayLabel ||
+          (entry.matchTags && entry.matchTags.includes(overlayLabel))
+        ) {
+          return entry;
+        }
+      }
+
+      return null;
+    }
+    // [6.12] Helper to check if a panorama should be included
     function _shouldIncludePanorama(
       label,
       subtitle,
@@ -3469,7 +5947,31 @@ function findBusinessMatch(tourElement) {
       allowedMediaIndexes,
       blacklistedMediaIndexes,
     ) {
-      // Apply whitelist/blacklist filters
+      // [6.12.0.5] NEW - Apply unique item name filtering (exact match)
+      if (label) {
+        const uniqueNameFilterMode = _config.filter.uniqueNames?.mode;
+        if (
+          uniqueNameFilterMode === "whitelist" &&
+          Array.isArray(_config.filter.uniqueNames?.allowedNames) &&
+          _config.filter.uniqueNames.allowedNames.length > 0
+        ) {
+          // Exact match check for panoramas
+          if (!_config.filter.uniqueNames.allowedNames.includes(label)) {
+            return false;
+          }
+        } else if (
+          uniqueNameFilterMode === "blacklist" &&
+          Array.isArray(_config.filter.uniqueNames?.blacklistedNames) &&
+          _config.filter.uniqueNames.blacklistedNames.length > 0
+        ) {
+          // Exact match check for panoramas
+          if (_config.filter.uniqueNames.blacklistedNames.includes(label)) {
+            return false;
+          }
+        }
+      }
+
+      // [6.12.1] Apply whitelist/blacklist filters
       if (filterMode === "whitelist") {
         if (label) {
           if (!allowedValues.includes(label)) {
@@ -3483,7 +5985,7 @@ function findBusinessMatch(tourElement) {
         if (subtitle && blacklistedValues.includes(subtitle)) return false;
       }
 
-      // For completely blank items
+      // [6.12.2] For completely blank items
       const hasTags = Array.isArray(tags) && tags.length > 0;
       if (!label && !subtitle && !hasTags) {
         // Check media index filtering
@@ -3496,7 +5998,7 @@ function findBusinessMatch(tourElement) {
         if (!_config.includeContent.completelyBlank) return false;
       }
 
-      // Skip unlabeled items based on configuration
+      // [6.12.3] Skip unlabeled items based on configuration
       if (!label) {
         const hasSubtitle = Boolean(subtitle);
 
@@ -3511,36 +6013,63 @@ function findBusinessMatch(tourElement) {
       return true;
     }
 
-    // Helper to get display label
-    function _getDisplayLabel(label, subtitle, tags) {
+    // [6.13] Helper to get display label
+    function _getDisplayLabel(label, subtitle, tags, itemContext) {
+      // [6.13.1] Enhanced display label generation with context awareness
+      const context = itemContext || {};
+      const elementType = context.type || "Element";
+      const itemId = context.id || "";
+      const index = context.index !== undefined ? context.index : -1;
+
+      // [1] Handle onlySubtitles mode
       if (_config.display.onlySubtitles && subtitle) {
         return subtitle;
       }
 
-      if (!label) {
-        if (subtitle && _config.useAsLabel.subtitles) {
-          return subtitle;
+      // [2] If we have a proper label, use it
+      if (label && label.trim()) {
+        return label.trim();
+      }
+
+      // [3] NO LABEL: Check subtitle first (this was missing!)
+      if (!label || !label.trim()) {
+        if (subtitle && subtitle.trim() && _config.useAsLabel.subtitles) {
+          console.log(`[LABEL DEBUG] Using subtitle as label: "${subtitle}"`);
+          return subtitle.trim();
         }
 
+        // [4] Then check tags
         if (Array.isArray(tags) && tags.length > 0 && _config.useAsLabel.tags) {
+          console.log(
+            `[LABEL DEBUG] Using tags as label: "${tags.join(", ")}"`,
+          );
           return tags.join(", ");
         }
 
+        // [5] Only use element type + ID as last resort
         if (_config.useAsLabel.elementType) {
-          return "Panorama";
+          // Don't show internal IDs - use generic labels
+          if (index >= 0) {
+            return `${elementType} ${index + 1}`;
+          } else {
+            return elementType;
+          }
         }
 
-        return _config.useAsLabel.customText;
+        // [6] Final fallback
+        const customText = _config.useAsLabel.customText || "[Unnamed Item]";
+        return customText;
       }
 
       return label;
     }
 
-    // Helper to get overlays from multiple sources
+    // [6.14] Enhanced function for overlay detection
+
     function _getOverlays(media, tour, item) {
       const overlays = [];
       const overlayDetectionMethods = [
-        // Method 1: media.get('overlays')
+        // [6.14.1] Method 1: media.get('overlays')
         () => {
           try {
             const mediaOverlays = media.get("overlays");
@@ -3553,7 +6082,7 @@ function findBusinessMatch(tourElement) {
           return null;
         },
 
-        // Method 2: media.overlays
+        // [6.14.2] Method 2: media.overlays
         () => {
           try {
             if (Array.isArray(media.overlays) && media.overlays.length > 0) {
@@ -3565,7 +6094,7 @@ function findBusinessMatch(tourElement) {
           return null;
         },
 
-        // Method 3: item's overlays directly
+        // [6.14.3] Method 3: item's overlays directly
         () => {
           try {
             if (Array.isArray(item.overlays) && item.overlays.length > 0) {
@@ -3577,7 +6106,7 @@ function findBusinessMatch(tourElement) {
           return null;
         },
 
-        // Method 4: overlaysByTags
+        // [6.14.4] Method 4: overlaysByTags
         () => {
           try {
             if (typeof media.get === "function") {
@@ -3600,7 +6129,118 @@ function findBusinessMatch(tourElement) {
           return null;
         },
 
-        // Method 5: Look for child elements in the tour.player
+        // [6.14.5] Method 5: Look for SpriteModel3DObject by panorama
+        () => {
+          try {
+            if (
+              tour.player &&
+              typeof tour.player.getByClassName === "function"
+            ) {
+              const allSprites = tour.player.getByClassName(
+                "SpriteModel3DObject",
+              );
+              if (Array.isArray(allSprites) && allSprites.length > 0) {
+                // Filter sprites that belong to this specific panorama
+                const mediaId = media.get ? media.get("id") : media.id;
+                const panoramaSprites = allSprites.filter((sprite) => {
+                  try {
+                    // [6.14.5.1] Check if sprite belongs to this panorama
+                    const spriteParent = sprite.get
+                      ? sprite.get("parent")
+                      : sprite.parent;
+                    const parentId =
+                      spriteParent && spriteParent.get
+                        ? spriteParent.get("id")
+                        : spriteParent?.id;
+
+                    // [6.14.5.2] Also check for direct media association
+                    const spriteMedia = sprite.get
+                      ? sprite.get("media")
+                      : sprite.media;
+                    const spriteMediaId =
+                      spriteMedia && spriteMedia.get
+                        ? spriteMedia.get("id")
+                        : spriteMedia?.id;
+
+                    return parentId === mediaId || spriteMediaId === mediaId;
+                  } catch (e) {
+                    // [6.14.5.3] If We Can't Determine Parent, Include It Anyway for This Panorama
+                    Logger.debug(
+                      "Could not determine sprite parent, including in search:",
+                      e,
+                    );
+                    return true;
+                  }
+                });
+
+                if (panoramaSprites.length > 0) {
+                  Logger.info(
+                    `Found ${panoramaSprites.length} SpriteModel3DObject(s) for panorama ${mediaId}`,
+                  );
+                  return panoramaSprites;
+                }
+              }
+            }
+          } catch (e) {
+            Logger.debug(
+              "Enhanced SpriteModel3DObject overlay detection failed:",
+              e,
+            );
+          }
+          return null;
+        },
+
+        // [6.14.6] Method 6: Fallback - Include All 3D Objects for First Panorama if None Found
+        () => {
+          try {
+            // Only apply this fallback for the first panorama to avoid duplicates
+            const currentIndex = item.get ? item.get("index") : 0;
+            if (
+              currentIndex === 0 &&
+              tour.player &&
+              typeof tour.player.getByClassName === "function"
+            ) {
+              const allSprites = tour.player.getByClassName(
+                "SpriteModel3DObject",
+              );
+              if (Array.isArray(allSprites) && allSprites.length > 0) {
+                Logger.info(
+                  `Fallback: Adding ${allSprites.length} unassigned SpriteModel3DObject(s) to first panorama`,
+                );
+                return allSprites;
+              }
+            }
+          } catch (e) {
+            Logger.debug("Fallback 3D object detection failed:", e);
+          }
+          return null;
+        },
+
+        // [6.14.7] Method 7: Look for other 3D classes
+        () => {
+          try {
+            if (
+              tour.player &&
+              typeof tour.player.getByClassName === "function"
+            ) {
+              const all3DObjects = [
+                ...tour.player.getByClassName("Model3DObject"),
+                ...tour.player.getByClassName("Sprite3DObject"),
+                ...tour.player.getByClassName("SpriteHotspotObject"),
+              ];
+
+              if (all3DObjects.length > 0) {
+                Logger.info(`Found ${all3DObjects.length} other 3D objects`);
+                return all3DObjects;
+              }
+            }
+          } catch (e) {
+            Logger.debug("Other 3D object detection failed:", e);
+          }
+          return null;
+        },
+
+        // [6.14.8] Method 8: Look for child elements in the tour.player
         () => {
           try {
             if (
@@ -3609,7 +6249,7 @@ function findBusinessMatch(tourElement) {
             ) {
               const allOverlays = tour.player.getByClassName("PanoramaOverlay");
               if (Array.isArray(allOverlays) && allOverlays.length > 0) {
-                // Filter to only get overlays that belong to this panorama
+                // [6.14.8.1] Filter to Only Get Overlays That Belong to This Panorama
                 return allOverlays.filter((overlay) => {
                   try {
                     const parentMedia = overlay.get("media");
@@ -3617,31 +6257,39 @@ function findBusinessMatch(tourElement) {
                       parentMedia && parentMedia.get("id") === media.get("id")
                     );
                   } catch {
-                    return false;
+                    // [6.14.8.2] If We Can't Determine Parent, Include It Anyway for This Panorama
+                    Logger.debug(
+                      "Could not determine overlay parent, including in search",
+                    );
+                    return true;
                   }
                 });
               }
             }
           } catch {
-            Logger.debug("Method 5 overlay detection failed");
+            Logger.debug("Method 8 overlay detection failed");
           }
           return null;
         },
       ];
 
-      // Try each method in sequence
+      // [6.14.9] Try each method in sequence
       for (const method of overlayDetectionMethods) {
         const result = method();
-        if (result) {
+        if (result && result.length > 0) {
           overlays.push(...result);
-          break;
+          Logger.debug(
+            `Overlay detection method found ${result.length} overlays`,
+          );
+          break; // Stop after first successful method
         }
       }
 
+      Logger.info(`Total overlays found for panorama: ${overlays.length}`);
       return overlays;
     }
 
-    // [5.4.2] Process overlay elements
+    // [6.15] Method: _processOverlays() - Process Overlay Elements
     function _processOverlays(overlays, fuseData, parentIndex, parentLabel) {
       if (!Array.isArray(overlays) || overlays.length === 0) {
         return;
@@ -3649,10 +6297,10 @@ function findBusinessMatch(tourElement) {
 
       overlays.forEach((overlay, overlayIndex) => {
         try {
-          // Get overlay data safely
+          // [6.15.1] Logic Block: Get Overlay Data Safely
           const overlayData = _safeGetData(overlay);
 
-          // Get overlay label
+          // [6.15.2] Logic Block: Get Overlay Label
           let overlayLabel = "";
           if (overlayData.label) {
             overlayLabel = overlayData.label.trim();
@@ -3663,11 +6311,11 @@ function findBusinessMatch(tourElement) {
               const label = overlay.get("label");
               if (label) overlayLabel = label.trim();
             } catch {
-              // Silent failure for missing label property
+              // [6.15.2.1] Silent Failure for Missing Label Property
             }
           }
 
-          // If still no label, try to use other properties like text content
+          // [6.15.3] Logic Block: If Still No Label, Try to Use Other Properties Like Text Content
           if (!overlayLabel && typeof overlay.get === "function") {
             try {
               const textContent = overlay.get("text");
@@ -3676,15 +6324,15 @@ function findBusinessMatch(tourElement) {
                 if (textContent.length > 30) overlayLabel += "...";
               }
             } catch {
-              // Silent failure for missing text property
+              // [6.15.3.1] Silent Failure for Missing Text Property
             }
           }
 
-          // Skip if empty label and configured to do so
+          // [6.15.4] Logic Block: Skip If Empty Label and Configured to Do So
           if (!overlayLabel && _config.includeContent.elements.skipEmptyLabels)
             return;
 
-          // Get element type
+          // [6.15.5] Logic Block: Get Element Type
           let elementType = _getElementType(overlay, overlayLabel);
           if (
             overlayLabel.includes("info-") ||
@@ -3693,7 +6341,7 @@ function findBusinessMatch(tourElement) {
             elementType = "Hotspot";
           }
 
-          // Apply element filtering
+          // [6.15.6] Logic Block: Apply Element Filtering
           const elementTags = Array.isArray(overlayData.tags)
             ? overlayData.tags
             : [];
@@ -3701,7 +6349,7 @@ function findBusinessMatch(tourElement) {
             return;
           }
 
-          // Get element ID safely
+          // [6.15.7] Logic Block: Get element ID safely
           let elementId = null;
           if (overlay.id) {
             elementId = overlay.id;
@@ -3709,27 +6357,69 @@ function findBusinessMatch(tourElement) {
             try {
               elementId = overlay.get("id");
             } catch {
-              // Silent failure for missing id property
+              // [6.15.7.1] Silent failure for missing id property
             }
           }
 
-          // Create a fallback label if needed
+          // [6.15.8] Logic Block: Create a fallback label if needed
           let displayLabel = overlayLabel;
           if (!displayLabel) {
             displayLabel = `${elementType} ${parentIndex}.${overlayIndex}`;
           }
 
-          // Add to search data
+          let businessMatch = null;
+          if (
+            _config.businessData?.useBusinessData &&
+            _businessData.length > 0
+          ) {
+            try {
+              const elementForMatching = {
+                name: overlayLabel,
+                id: elementId,
+                tags: elementTags,
+                type: elementType,
+              };
+              businessMatch = findBusinessMatch(elementForMatching);
+            } catch (error) {
+              Logger.warn(
+                `Error matching business data for overlay ${overlayLabel}:`,
+                error,
+              );
+            }
+          }
+
+          // [6.15.9] Logic Block: Use business data for display if available
+          let resultLabel = displayLabel;
+          let resultDescription = "";
+          if (businessMatch) {
+            if (_config.businessData.replaceTourData) {
+              resultLabel = businessMatch.name || displayLabel;
+              resultDescription = businessMatch.description || "";
+            }
+          }
+          // [6.15.10] Logic Block: Add to search data
           fuseData.push({
-            type: elementType,
-            label: displayLabel,
+            type:
+              businessMatch && _config.businessData.replaceTourData
+                ? elementType
+                : businessMatch
+                  ? "Business"
+                  : elementType,
+            label: resultLabel,
+            subtitle: resultDescription,
             tags: elementTags,
             parentIndex: parentIndex,
             parentLabel: parentLabel,
-            // Maintain order information relative to parent panorama
-            playlistOrder: parentIndex * 1000 + overlayIndex, // Ensures panoramas sort before their children
+            playlistOrder: parentIndex * 1000 + overlayIndex,
             id: elementId,
-            boost: 0.8,
+            // [6.15.10.1] Include business data for images
+            businessData: businessMatch,
+            businessName: businessMatch?.name,
+            imageUrl: businessMatch?.imageUrl || null,
+            localImage: businessMatch?.localImage || null,
+            boost: businessMatch
+              ? _config.searchSettings.boostValues.businessMatch
+              : _config.searchSettings.boostValues.childElement,
           });
         } catch (overlayError) {
           Logger.warn(
@@ -3740,7 +6430,7 @@ function findBusinessMatch(tourElement) {
       });
     }
 
-    // [5.4.3] UI BUILDING FUNCTIONS
+    // [6.16] Submodule: UI BUILDING FUNCTIONS
     /**
      * Creates and inserts the search field into the container if missing.
      * @param {HTMLElement} container
@@ -3779,7 +6469,7 @@ function findBusinessMatch(tourElement) {
     }
 
     /**
-     * Creates and returns the no-results message element.
+     * [6.16.2] Creates and returns the no-results message element.
      * @returns {HTMLElement}
      */
     function _buildNoResultsMessage() {
@@ -3788,9 +6478,9 @@ function findBusinessMatch(tourElement) {
       noResults.innerHTML = "<p>No results found</p>";
       return noResults;
     }
-
+    
     /**
-     * Creates and inserts the search results container into the container if missing.
+     * [6.15.3] Creates and inserts the search results container into the container if missing.
      * @param {HTMLElement} container
      */
     function _buildResultsContainer(container) {
@@ -3802,12 +6492,12 @@ function findBusinessMatch(tourElement) {
         _aria.setRole(resultsContainer, "listbox");
         _aria.setLabel(resultsContainer, "Search results");
 
-        // Add results section
+        // [6.15.3.2] Add results section
         const resultsSection = document.createElement("div");
         resultsSection.className = "results-section";
         resultsContainer.appendChild(resultsSection);
 
-        // Add no-results message
+        // [6.15.3.3] Add no-results message
         resultsContainer.appendChild(_buildNoResultsMessage());
 
         container.appendChild(resultsContainer);
@@ -3815,7 +6505,7 @@ function findBusinessMatch(tourElement) {
     }
 
     /**
-     * Orchestrates building the search UI components if not present.
+     * [6.16.4] Orchestrates building the search UI components if not present.
      * @param {HTMLElement} container
      */
     function _createSearchInterface(container) {
@@ -3834,97 +6524,132 @@ function findBusinessMatch(tourElement) {
       }
     }
 
-    // [5.4.4] Text highlighting with improved safety
+    // [6.17] Text highlighting with improved safety
     const highlightMatch = (text, term) => {
-      if (!text || !term || term === "*") return text || "";
+  if (!text || !term || term === "*") return text || "";
 
-      try {
-        // Sanitize the search term to prevent regex errors
-        const sanitizedTerm = term.replace(/[-/^$*+?.()|[\]{}]/g, "\\$&");
-        const regex = new RegExp(`(${sanitizedTerm})`, "gi");
-        return text.replace(regex, "<mark>$1</mark>");
-      } catch (error) {
-        Logger.warn("Error highlighting text:", error);
-        return text;
-      }
-    };
+  try {
+    // Fully sanitize the search term for regex use
+    const sanitizedTerm = term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`(${sanitizedTerm})`, "gi");
 
-    // [5.4.5] Get icon HTML for element types
+    // Use document.createElement for safer DOM creation
+    const tempDiv = document.createElement('div');
+    tempDiv.textContent = text;
+    const sanitizedText = tempDiv.innerHTML;
+
+    // Fix: Actually wrap matches with <mark> tags for highlighting
+    return sanitizedText.replace(regex, "<mark>$1</mark>");
+  } catch (error) {
+    Logger.warn("Error highlighting text:", error);
+    return text;
+  }
+};
+
+    // [6.17.2] Get icon HTML for element types
     const getTypeIcon = (type) => {
       const icons = {
         Panorama: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                              <circle cx="12" cy="10" r="3"></circle>
-                          </svg>`,
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                          <circle cx="12" cy="10" r="3"></circle>
+                      </svg>`,
         Hotspot: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                             <circle cx="12" cy="12" r="3"></circle>
-                             <circle cx="12" cy="12" r="9"></circle>
-                          </svg>`,
+                         <circle cx="12" cy="12" r="3"></circle>
+                         <circle cx="12" cy="12" r="9"></circle>
+                      </svg>`,
         Polygon: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                          </svg>`,
-        Video: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
-                           <polygon points="10 9 15 12 10 15" fill="currentColor"></polygon>
-                        </svg>`,
-        Webframe: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                              <rect x="2" y="2" width="20" height="16" rx="2" ry="2"></rect>
-                              <line x1="2" y1="6" x2="22" y2="6"></line>
+                         <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                      </svg>`,
+        "3DHotspot": `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                              <path d="M12 2L2 12h3v8h8v-3h2v3h8v-8h3L12 2z"></path>
+                              <circle cx="16" cy="8" r="2"></circle>
                            </svg>`,
-        Image: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                           <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                           <path d="M21 15l-5-5L5 21"></path>
-                        </svg>`,
-        ProjectedImage: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                   <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                                   <path d="M21 15l-5-5L5 21"></path>
-                                   <line x1="3" y1="3" x2="21" y2="21"></line>
-                                </svg>`,
-        Text: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                          <line x1="4" y1="7" x2="20" y2="7"></line>
-                          <line x1="4" y1="12" x2="20" y2="12"></line>
-                          <line x1="4" y1="17" x2="14" y2="17"></line>
+        "3DModel": `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                              <path d="M12 2L2 12h3v8h8v-3h2v3h8v-8h3L12 2z"></path>
+                              <rect x="9" y="9" width="6" height="6" rx="1"></rect>
+                           </svg>`,
+        Video: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                       <rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>
+                       <polygon points="10 9 15 12 10 15" fill="currentColor"></polygon>
+                    </svg>`,
+        Webframe: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <rect x="2" y="2" width="20" height="16" rx="2" ry="2"></rect>
+                          <line x1="2" y1="6" x2="22" y2="6"></line>
                        </svg>`,
+        Image: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                       <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                       <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                       <path d="M21 15l-5-5L5 21"></path>
+                    </svg>`,
+        ProjectedImage: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                               <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                               <path d="M21 15l-5-5L5 21"></path>
+                               <line x1="3" y1="3" x2="21" y2="21"></line>
+                            </svg>`,
+        Text: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <line x1="4" y1="7" x2="20" y2="7"></line>
+                      <line x1="4" y1="12" x2="20" y2="12"></line>
+                      <line x1="4" y1="17" x2="14" y2="17"></line>
+                   </svg>`,
         Element: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                             <circle cx="12" cy="12" r="9"></circle>
-                          </svg>`,
+                         <circle cx="12" cy="12" r="9"></circle>
+                      </svg>`,
         Business: `<svg xmlns="http://www.w3.org/2000/svg" class="search-result-icon business-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                             <path d="M3 3h18v18H3V3z"></path>
-                             <path d="M9 21V9"></path>
-                          </svg>`,
+                    <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                    <line x1="4" y1="7" x2="20" y2="7"></line>
+                    <line x1="4" y1="12" x2="20" y2="12"></line>
+                    <line x1="4" y1="17" x2="20" y2="17"></line>
+                    <line x1="9" y1="7" x2="9" y2="22"></line>
+                    <line x1="15" y1="7" x2="15" y2="22"></line>
+                  </svg>`,
       };
 
-      // Return the icon for the specified type, or a default if not found
+      // [6.17.3] Return the icon for the specified type, or a default if not found
       return icons[type] || icons["Element"];
     };
-
-    // [5.4.6] Group and sort search results
+    // [6.18] Group and sort search results
     const groupAndSortResults = (matches) => {
-      // Fix: Only create separate Business group if replaceTourData is false
+      // [6.18.1] Group results by type with consistent business data handling
       const grouped = matches.reduce((acc, match) => {
-  // Check if this is a business result that should be grouped separately
-  if (_config.businessData?.useBusinessData && 
-      match.item.businessName && 
-      _config.businessData.replaceTourData !== true) {
-    // Group business results separately only if NOT replacing tour data
-    const type = "Business"; 
-    if (!acc[type]) acc[type] = [];
-    acc[type].push(match);
-  } else {
-    // Standard grouping by original type
-    const type = match.item.type;
-    if (!acc[type]) acc[type] = [];
-    acc[type].push(match);
-  }
-  return acc;
-}, {});
+        // **SIMPLIFIED: Always start with original type**
+        let groupType = match.item.type || "Element";
 
-      // Sort items within each group
+        // **ONLY** change group type if explicitly configured to do so
+        if (
+          _config.businessData?.useBusinessData &&
+          _config.businessData?.replaceTourData &&
+          match.item.businessData?.elementType
+        ) {
+          groupType = match.item.businessData.elementType;
+        }
+        // **OR** if Google Sheets is primary data source
+        else if (
+          _config.googleSheets?.useAsDataSource &&
+          _config.googleSheets?.useGoogleSheetData &&
+          match.item.sheetsData?.elementType
+        ) {
+          groupType = match.item.sheetsData.elementType;
+        }
+        // **OR** if it's a business-only entry (no tour data)
+        else if (
+          _config.businessData?.useBusinessData &&
+          match.item.businessName &&
+          !match.item.item
+        ) {
+          // No associated tour item
+          groupType = "Business";
+        }
+
+        if (!acc[groupType]) acc[groupType] = [];
+        acc[groupType].push(match);
+        return acc;
+      }, {});
+
+      // [6.18.2] Sort items within each group
       Object.keys(grouped).forEach((type) => {
         grouped[type].sort((a, b) => {
-          // Primary sort by playlistOrder to respect MainPlaylist order
+          // [6.18.2.1] Primary sort by playlistOrder to respect MainPlaylist order
           if (
             a.item.playlistOrder !== undefined &&
             b.item.playlistOrder !== undefined
@@ -3932,11 +6657,11 @@ function findBusinessMatch(tourElement) {
             return a.item.playlistOrder - b.item.playlistOrder;
           }
 
-          // Secondary sort by label (alphabetical) when playlistOrder isn't available
+          // [6.18.2.2] Secondary sort by label (alphabetical) when playlistOrder isn't available
           const labelCompare = a.item.label.localeCompare(b.item.label);
           if (labelCompare !== 0) return labelCompare;
 
-          // Tertiary sort by parent (if applicable)
+          // [6.18.2.3] Tertiary sort by parent (if applicable)
           if (a.item.parentLabel && b.item.parentLabel) {
             return a.item.parentLabel.localeCompare(b.item.parentLabel);
           }
@@ -3947,9 +6672,33 @@ function findBusinessMatch(tourElement) {
 
       return grouped;
     };
+    // [6.19.0] Helper function for consistent type resolution
+    function _resolveDisplayType(item, config) {
+      const originalType = item.type || "Element";
 
-    // [5.4.7] Main search function with improved error handling
+      // Only change display type under specific conditions
+      if (
+        config.businessData?.replaceTourData &&
+        config.businessData?.useBusinessData &&
+        item.businessData?.elementType
+      ) {
+        return item.businessData.elementType;
+      }
+
+      if (
+        config.googleSheets?.useAsDataSource &&
+        config.googleSheets?.useGoogleSheetData &&
+        item.sheetsData?.elementType
+      ) {
+        return item.sheetsData.elementType;
+      }
+
+      // Default: keep original type
+      return originalType;
+    }
+    // [6.19] Main search function with improved error handling
     performSearch = () => {
+      // [6.19.1] Main search execution function
       const searchContainer = document.getElementById("searchContainer");
       if (!searchContainer) {
         Logger.error("Search container not found");
@@ -3969,11 +6718,11 @@ function findBusinessMatch(tourElement) {
         return;
       }
 
-      // Add ARIA attributes for better accessibility
+      // [6.19.1.1] Add ARIA attributes for better accessibility
       resultsContainer.setAttribute("aria-live", "polite"); // Announce changes politely
       noResults.setAttribute("role", "status"); // Mark as status for screen readers
 
-      // Update UI based on search term
+      // [6.19.1.2] Update UI based on search term
       if (searchTerm.length > 0) {
         if (clearButton) clearButton.classList.add("visible");
         if (searchIcon) {
@@ -3988,14 +6737,14 @@ function findBusinessMatch(tourElement) {
         }
       }
 
-      // Skip if search term hasn't changed
+      // [6.19.1.3] Skip if search term hasn't changed
       if (searchTerm === currentSearchTerm) return;
       currentSearchTerm = searchTerm;
 
-      // Reset results list
+      // [6.19.1.4] Reset results list
       resultsList.innerHTML = "";
 
-      // Handle empty search - hide results
+      // [6.19.1.5] Handle empty search - hide results
       if (!searchTerm) {
         searchContainer.classList.remove("has-results");
         noResults.classList.remove("visible");
@@ -4006,7 +6755,7 @@ function findBusinessMatch(tourElement) {
         return;
       }
 
-      // Check minimum character requirement
+      // [6.19.1.6] Check minimum character requirement
       if (searchTerm !== "*" && searchTerm.length < _config.minSearchChars) {
         noResults.classList.remove("visible");
         noResults.classList.add("hidden");
@@ -4020,21 +6769,21 @@ function findBusinessMatch(tourElement) {
         return;
       }
 
-      // Show results container initially
+      // [6.19.1.7] Show results container initially
       resultsContainer.classList.remove("hidden");
       resultsContainer.classList.add("visible");
 
       try {
-        // Ensure fuse index is initialized
+        // [6.19.1.8] Ensure fuse index is initialized
         if (!fuse) {
           Logger.warn("Search index not initialized, preparing now...");
           prepareFuse();
         }
 
-        // Perform search
+        // [6.19.1.9] Perform search
         let matches;
         if (searchTerm === "*") {
-          // Wildcard search shows all items
+          // [6.19.1.9.1] Wildcard search shows all items
           matches = fuse._docs
             ? fuse._docs.map((item, index) => ({
                 item,
@@ -4043,42 +6792,42 @@ function findBusinessMatch(tourElement) {
               }))
             : [];
         } else {
-          // Process search term for special characters
+          // [6.19.1.9.2] Process search term for special characters
           const processedTerm = _preprocessSearchTerm(searchTerm);
 
-          // Allow exact matching with = prefix
+          // [6.19.1.9.3] Allow exact matching with = prefix
           if (
             typeof processedTerm === "string" &&
             processedTerm.startsWith("=")
           ) {
             matches = fuse.search({ $or: [{ label: processedTerm }] });
           } else {
-            // Use regular fuzzy search
+            // [6.19.1.9.4] Use regular fuzzy search
             matches = fuse.search(processedTerm);
           }
         }
 
-        // Handle no results case
+        // [6.19.1.10] Handle no results case
         if (!matches || !matches.length) {
-          // Remove 'has-results' if no matches
+          // [6.19.1.10.1] Remove 'has-results' if no matches
           searchContainer.classList.remove("has-results");
 
-          // Show 'no results' message
+          // [6.19.1.10.2] Show 'no results' message
           noResults.classList.remove("hidden");
           noResults.classList.add("visible");
           noResults.setAttribute("role", "status");
           noResults.setAttribute("aria-live", "polite");
 
-          // Make results container visible but transparent
+          // [6.19.1.10.3] Make results container visible but transparent
           resultsContainer.classList.remove("hidden");
           resultsContainer.classList.add("visible", "no-results-bg");
 
-          // Hide results list (optional, if you want the "no results" message to fill space)
+          // [6.19.1.10.4] Hide results list
           resultsList.classList.add("hidden");
 
           return;
         } else {
-          // Show results and hide 'no results'
+          // [6.19.1.10.5] Show results and hide 'no results'
           searchContainer.classList.add("has-results");
           noResults.classList.remove("visible");
           noResults.classList.add("hidden");
@@ -4087,28 +6836,28 @@ function findBusinessMatch(tourElement) {
           resultsList.classList.remove("hidden");
         }
 
-        // Make results container accessible for screen readers
+        // [6.19.1.11] Make results container accessible for screen readers
         resultsContainer.setAttribute("aria-live", "polite");
         resultsContainer.setAttribute("aria-relevant", "additions text");
         noResults.classList.remove("visible");
         noResults.classList.add("hidden");
 
-        // Display results
+        // [6.19.1.12] Display results
         resultsList.classList.remove("hidden");
         resultsList.classList.add("visible"); // Use CSS class for visible state
         noResults.classList.remove("visible");
         noResults.classList.add("hidden");
 
-        // Group and sort results
+        // [6.19.1.13] Group and sort results
         const groupedResults = groupAndSortResults(matches);
 
-        // Apply type filtering based on config
+        // [6.19.1.14] Apply type filtering based on config
         if (
           _config.filter.typeFilter?.mode === "whitelist" &&
           Array.isArray(_config.filter.typeFilter?.allowedTypes) &&
           _config.filter.typeFilter.allowedTypes.length > 0
         ) {
-          // Only keep allowed result types
+          // [6.19.1.14.1] Only keep allowed result types
           Object.keys(groupedResults).forEach((type) => {
             if (!_config.filter.typeFilter.allowedTypes.includes(type)) {
               delete groupedResults[type];
@@ -4119,7 +6868,7 @@ function findBusinessMatch(tourElement) {
           Array.isArray(_config.filter.typeFilter?.blacklistedTypes) &&
           _config.filter.typeFilter.blacklistedTypes.length > 0
         ) {
-          // Remove blacklisted result types
+          // [6.19.1.14.2] Remove blacklisted result types
           Object.keys(groupedResults).forEach((type) => {
             if (_config.filter.typeFilter.blacklistedTypes.includes(type)) {
               delete groupedResults[type];
@@ -4127,10 +6876,10 @@ function findBusinessMatch(tourElement) {
           });
         }
 
-        // Keep track of result index for ARIA attributes
+        // [6.19.1.15] Keep track of result index for ARIA attributes
         let resultIndex = 0;
 
-        // Define priority order for result types
+        // [6.19.1.16] Define priority order for result types
         const typeOrder = [
           "Panorama",
           "Hotspot",
@@ -4140,27 +6889,30 @@ function findBusinessMatch(tourElement) {
           "Image",
           "Text",
           "ProjectedImage",
+          "3DModel",
+          "3DHotspot",
           "Element",
           "Business",
         ];
 
-        // Render each group of results in priority order
+        // [6.19.1.17] Render each group of results in priority order
         Object.entries(groupedResults)
           .sort(([typeA], [typeB]) => {
-            // Get index in priority array (default to end if not found)
+            // [6.19.1.17.1] Get index in priority array (default to end if not found)
             const indexA = typeOrder.indexOf(typeA);
             const indexB = typeOrder.indexOf(typeB);
 
-            // Handle types not in the priority list
+            // [6.19.1.17.2] Handle types not in the priority list
             const valA = indexA !== -1 ? indexA : typeOrder.length;
             const valB = indexB !== -1 ? indexB : typeOrder.length;
 
-            // Sort by priority index
+            // [6.19.1.17.3] Sort by priority index
             return valA - valB;
           })
           .forEach(([type, results]) => {
             const groupEl = document.createElement("div");
             groupEl.className = "results-group";
+
             groupEl.setAttribute("data-type", type);
             groupEl.setAttribute(
               "data-header-align",
@@ -4174,10 +6926,10 @@ function findBusinessMatch(tourElement) {
             _aria.setRole(groupEl, "group");
             _aria.setLabel(groupEl, `${type} results`);
 
-            // Use custom label from config if available, otherwise use the original type
+            // [6.19.1.17.4] Use custom label from config if available, otherwise use the original type
             const customLabel = _config.displayLabels[type] || type;
 
-            // Create group header with custom label
+            // [6.19.1.17.5] Create group header with custom label
             groupEl.innerHTML = `
                         <div class="group-header">
                             <span class="group-title">${customLabel}</span>
@@ -4185,13 +6937,89 @@ function findBusinessMatch(tourElement) {
                         </div>
                     `;
 
-            // Render each result item
+            // [6.19.1.17.5.1] Apply fade-in animation
+            const animConfig = _config.animations || {};
+            const animEnabled = animConfig.enabled === true;
+
+            if (animEnabled) {
+              console.log("🎬 Applying group animation:", animConfig.results); // Debug log
+              // Apply fade-in animation to results group
+              groupEl.style.opacity = "0";
+              groupEl.style.transform = `translateY(${animConfig.results?.slideDistance || 10}px)`;
+
+              requestAnimationFrame(() => {
+                groupEl.style.transition = `opacity ${animConfig.results?.fadeInDuration || 200}ms ease-out, transform ${animConfig.results?.fadeInDuration || 200}ms ease-out`;
+                groupEl.style.opacity = "1";
+                groupEl.style.transform = "translateY(0)";
+                console.log("🎬 Group animation applied"); // Debug log
+              });
+            }
+
+            // [6.19.1.17.6] Render each result item
             results.forEach((result) => {
               resultIndex++;
               const resultItem = document.createElement("div");
               resultItem.className = "result-item";
               _aria.setRole(resultItem, "option");
               resultItem.tabIndex = 0;
+              resultItem.setAttribute("aria-posinset", resultIndex);
+              _aria.setSelected(resultItem, false);
+              resultItem.dataset.type = result.item.type;
+
+              // [6.19.1.17.6.0.1] Apply fade-in animation
+              if (animEnabled) {
+                console.log(
+                  `🎬 Applying item animation ${resultIndex}:`,
+                  animConfig.results,
+                );
+                resultItem.style.opacity = "0";
+                resultItem.style.transform = "translateX(-10px)";
+
+                setTimeout(
+                  () => {
+                    resultItem.style.transition = `opacity ${animConfig.results?.fadeInDuration || 200}ms ease-out, transform ${animConfig.results?.fadeInDuration || 200}ms ease-out`;
+                    resultItem.style.opacity = "1";
+                    resultItem.style.transform = "translateX(0)";
+                    console.log(`🎬 Item ${resultIndex} animation applied`);
+                  },
+                  (resultIndex - 1) * (animConfig.results?.staggerDelay || 50),
+                );
+              }
+
+              // [6.19.1.17.6.1] Add business data attributes if available
+              if (
+                _config.businessData?.useBusinessData &&
+                result.item.businessName
+              ) {
+                resultItem.dataset.business = "true";
+                resultItem.dataset.businessTag = result.item.businessTag || "";
+              }
+
+              // [6.19.1.17.6.2] Add Google Sheets data attributes if available
+              if (
+                _config.googleSheets?.useGoogleSheetData &&
+                result.item.sheetsData
+              ) {
+                resultItem.dataset.sheets = "true";
+                if (result.item.sheetsData.elementType) {
+                  resultItem.dataset.sheetsType =
+                    result.item.sheetsData.elementType;
+                }
+              }
+              // [6.19.1.17.6.3] ADD CLICK/KEYBOARD HANDLER - Use our enhanced hybrid click handler
+              resultItem.addEventListener(
+                "click",
+                createHybridClickHandler(result, window.tourInstance),
+              );
+
+              // [6.19.1.17.6.4] Also handle keyboard enter/space for accessibility
+              resultItem.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  resultItem.click();
+                }
+              });
+
               resultItem.setAttribute("aria-posinset", resultIndex);
               _aria.setSelected(resultItem, false);
               resultItem.dataset.type = result.item.type;
@@ -4229,7 +7057,7 @@ function findBusinessMatch(tourElement) {
                 resultItem.dataset.index = result.item.index;
               }
 
-              // Show parent info for child elements if configured to do so
+              // [6.19.1.17.6.7] Show parent info for child elements if configured to do so
               const parentInfo =
                 result.item.type !== "Panorama" &&
                 result.item.parentLabel &&
@@ -4237,218 +7065,102 @@ function findBusinessMatch(tourElement) {
                   ? `<div class="result-parent">in ${highlightMatch(result.item.parentLabel, searchTerm)}</div>`
                   : "";
 
-              // [THUMBNAIL SETTINGS] Determine icon - use business icon or sheets-defined type icon as appropriate
-              const iconType =
-                result.item.type === "Panorama" && result.item.businessName
-                  ? "Business"
-                  : result.item.sheetsData?.elementType
-                    ? result.item.sheetsData.elementType
-                    : result.item.type;
+              // [6.19.1.17.6.8] Determine icon with consistent type resolution
+              let displayType = result.item.type; // Always use the original element type for icons
+              let isBusinessEnhanced = false;
+              let isSheetsEnhanced = false;
 
-              // [THUMBNAIL SETTINGS] Check for available image sources
+              // Check if this is enhanced by business or sheets data
+              if (
+                _config.businessData?.useBusinessData &&
+                result.item.businessName
+              ) {
+                isBusinessEnhanced = true;
+              }
+
+              if (
+                _config.googleSheets?.useGoogleSheetData &&
+                result.item.sheetsData
+              ) {
+                isSheetsEnhanced = true;
+              }
+              const iconType = displayType; // Use original type, not business/sheets override
+
+              // [6.19.1.17.6.9] Check for available image sources
               const hasGoogleSheetsImage =
                 _config.googleSheets?.useGoogleSheetData &&
                 result.item.imageUrl;
 
-              // [1.1.2.1] Extract panorama/element thumbnail URL from tour data if available
-              let thumbnailUrl = "";
-              try {
-                if (result.item.media && result.item.media.get) {
-                  // Try to get thumbnail from media object for panoramas
-                  const thumbnail = result.item.media.get("thumbnail");
-                  if (thumbnail) {
-                    thumbnailUrl = thumbnail;
-                    Logger.debug(
-                      `[Thumbnail] Found direct thumbnail for ${result.item.label}`,
-                    );
-                  } else {
-                    // Try to get first frame or preview image
-                    const firstFrame = result.item.media.get("firstFrame");
-                    const preview = result.item.media.get("preview");
-                    thumbnailUrl = firstFrame || preview || "";
+              // [6.19.1.17.6.10] Get thumbnail URL using centralized logic
+              const thumbnailUrl = _getThumbnailUrl(result.item, _config);
+              const hasThumbnail = thumbnailUrl !== null;
 
-                    if (thumbnailUrl) {
-                      Logger.debug(
-                        `[Thumbnail] Using fallback image for ${result.item.label}`,
-                      );
-                    }
-                  }
-                }
-              } catch (error) {
-                Logger.warn(
-                  `[Thumbnail] Error accessing media for ${result.item.label || "unknown item"}:`,
-                  error,
-                );
-                thumbnailUrl = "";
-              }
-
-              // [1.1.2.2] For sheet data, prioritize the image from sheets
-              if (hasGoogleSheetsImage) {
-                thumbnailUrl = result.item.imageUrl;
-                Logger.debug(
-                  `[Thumbnail] Using Google Sheets image for ${result.item.label}`,
-                );
-              }
-
-              // ADD THE FIX HERE - If no thumbnail URL, use the type-specific default
-              if (!thumbnailUrl) {
-                // Get the element type
-                const elementType = result.item.type || "default";
-
-                // Look up the type-specific default image
-                if (
-                  _config.thumbnailSettings?.defaultImages &&
-                  _config.thumbnailSettings.defaultImages[elementType]
-                ) {
-                  thumbnailUrl =
-                    _config.thumbnailSettings.defaultImages[elementType];
-                  Logger.debug(
-                    `[Thumbnail] Using type-specific default image for ${elementType}`,
-                  );
-                } else if (
-                  _config.thumbnailSettings?.defaultImages &&
-                  _config.thumbnailSettings.defaultImages.default
-                ) {
-                  thumbnailUrl =
-                    _config.thumbnailSettings.defaultImages.default;
-                  Logger.debug(`[Thumbnail] Using fallback default image`);
-                } else {
-                  thumbnailUrl =
-                    _config.thumbnailSettings?.defaultImagePath || "";
-                  Logger.debug(`[Thumbnail] Using legacy default image path`);
-                }
-              }
-              // [1.1.2.3] Determine if we should show thumbnail based on config
-              const thumbSettings = _config.thumbnailSettings || {};
-              let elementTypeLower = "other";
-
-              try {
-                elementTypeLower = (result.item.type || "").toLowerCase();
-                // Handle empty or invalid types
-                if (!elementTypeLower) {
-                  elementTypeLower = "other";
-                }
-              } catch (error) {
-                Logger.warn(
-                  "[Thumbnail] Error processing element type:",
-                  error,
-                );
-              }
-
-              // [1.1.2.4] Check if thumbnails are enabled for this element type
-              const shouldShowThumbnail =
-                thumbSettings.enableThumbnails &&
-                ((thumbSettings.showFor &&
-                  thumbSettings.showFor[elementTypeLower] === true) ||
-                  (elementTypeLower !== "panorama" &&
-                    elementTypeLower !== "hotspot" &&
-                    thumbSettings.showFor &&
-                    thumbSettings.showFor.other === true));
-
-              // [1.1.2.5] Only show thumbnail if enabled and we have a URL or default path
-              const hasThumbnail =
-                shouldShowThumbnail &&
-                (thumbnailUrl ||
-                  (thumbSettings.defaultImagePath &&
-                    thumbSettings.defaultImagePath !== ""));
-
-              if (thumbSettings.enableThumbnails && shouldShowThumbnail) {
-                Logger.debug(
-                  `[Thumbnail] Will ${hasThumbnail ? "show" : "not show"} thumbnail for ${elementTypeLower} element: ${result.item.label}`,
-                );
-              }
-
-              // [1.1.2.6] Determine thumbnail size class based on configuration
+              // [6.19.1.17.6.11] Determine thumbnail size class
               let thumbnailSizeClass = "thumbnail-medium";
+              const thumbSettings = _config.thumbnailSettings || {};
               if (thumbSettings.thumbnailSize === "small") {
                 thumbnailSizeClass = "thumbnail-small";
               } else if (thumbSettings.thumbnailSize === "large") {
                 thumbnailSizeClass = "thumbnail-large";
               }
 
-              // [1.1.2.7] Set the alignment data attribute on the result item for CSS to handle
+              // [6.19.1.17.6.12] Set alignment attributes
               if (hasThumbnail) {
                 resultItem.setAttribute(
                   "data-thumbnail-align",
-                  thumbSettings.alignment === "right" ? "right" : "left",
+                  thumbSettings.alignment === "right" ? "right" : "left"
                 );
               }
-
-              // Update the data-icon-align attribute to match the thumbnail alignment setting
               resultItem.setAttribute(
-                "data-icon-align",
-                thumbSettings.alignment === "right" ? "right" : "left",
+                "data-icon-align", 
+                thumbSettings.alignment === "right" ? "right" : "left"
               );
 
-              // Safely encode attribute values to prevent HTML injection
+              // [6.19.1.17.6.19] Safely encode attribute values to prevent HTML injection
               const safeEncode = (str) => {
-
-                if (typeof str === "string") {
-                  return str
-                    .replace(/"/g, "&quot;")
-                    .replace(/'/g, "&#39;")
-                    .replace(/</g, "&lt;")
-                    .replace(/>/g, "&gt;");
-                }
-                return str;
+                if (!str) return "";
+                return String(str)
+                  .replace(/&/g, "&amp;")
+                  .replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;");
               };
 
-              // Set inner HTML with safe encoding
-              resultItem.innerHTML = `
-                        <div class="result-content">
-                            <div class="result-icon" aria-hidden="true">
-                                ${getTypeIcon(iconType)}
-                            </div>
-                            <div class="result-info">
-                                <div class="result-label">${highlightMatch(
-                                  safeEncode(result.item.label),
-                                  searchTerm,
-                                )}</div>
-                                <div class="result-subtitle">${highlightMatch(
-                                  safeEncode(result.item.subtitle || ""),
-                                  searchTerm,
-                                )}</div>
-                            </div>
-                            ${
-                              _config.googleSheets?.useGoogleSheetData &&
-                              result.item.sheetsData &&
-                              !hasGoogleSheetsImage
-                                ? `
-                                <div class="result-sheets-attribution">
-                                    <span class="sheets-indicator">✓</span> Enhanced data
-                                </div>
-                            `
-                                : ""
-                            }
-                            ${parentInfo}
-                            ${
-                              result.item.tags &&
-                              result.item.tags.length > 0 &&
-                              _config.showTagsInResults
-                                ? `
-                                <div class="result-tags">
-                                    Tags: ${highlightMatch(Array.isArray(result.item.tags) ? result.item.tags.join(", ") : result.item.tags, searchTerm)}
-                                </div>
-                            `
-                                : ""
-                            }
-                            ${
-                              !_config.display.onlySubtitles &&
-                              result.item.subtitle &&
-                              _config.display.showSubtitlesInResults !== false
-                                ? `
-                                <div class="result-description">${highlightMatch(result.item.subtitle, searchTerm)}</div>
-                            `
-                                : ""
-                            }
-                        </div>
-                        `;
+              const safeThumbnailUrl = safeEncode(thumbnailUrl || "");
+              const safeLabel = safeEncode(result.item.label || "Search result");
 
-              // Add click handler with improved element triggering
+              // [6.19.1.17.6.20] Build result item content
+              resultItem.innerHTML = `
+                ${hasThumbnail ? `
+                  <div class="result-image ${thumbnailSizeClass}">
+                    <img src="${safeThumbnailUrl}" 
+                         alt="${safeLabel}" 
+                         loading="lazy"
+                         onerror="console.error('Thumbnail failed to load:', this.src);">
+                  </div>` : `
+                  <div class="result-icon">${getTypeIcon(result.item.type)}</div>`
+                }
+                <div class="result-content">
+                  <div class="result-text">${highlightMatch(result.item.label, searchTerm)}</div>
+                  ${_config.businessData?.useBusinessData && result.item.businessName && result.item.originalLabel ? `
+                    <div class="result-business-context">
+                      Location: ${highlightMatch(result.item.originalLabel, searchTerm)}
+                    </div>` : ""}
+                  ${parentInfo}
+                  ${result.item.tags && result.item.tags.length > 0 && _config.showTagsInResults ? `
+                    <div class="result-tags">
+                      Tags: ${highlightMatch(Array.isArray(result.item.tags) ? result.item.tags.join(", ") : result.item.tags, searchTerm)}
+                    </div>` : ""}
+                  ${!_config.display.onlySubtitles && result.item.subtitle && _config.display.showSubtitlesInResults !== false ? `
+                    <div class="result-description">${highlightMatch(result.item.subtitle, searchTerm)}</div>` : ""}
+                </div>
+              `;
+
+              // [6.19.1.17.6.22] Add click handler with improved element triggering
               resultItem.addEventListener("click", () => {
-                // Handle different element types
+                // [6.19.1.17.6.22.1] Handle different element types
                 if (result.item.type === "Panorama") {
-                  // Direct navigation for panoramas
+                  // [6.19.1.17.6.22.2] Direct navigation for panoramas
                   if (
                     tour &&
                     tour.mainPlayList &&
@@ -4466,7 +7178,7 @@ function findBusinessMatch(tourElement) {
                     }
                   }
                 } else if (result.item.parentIndex !== undefined) {
-                  // For child elements, navigate to parent panorama first
+                  // [6.19.1.17.6.22.3] For child elements, navigate to parent panorama first
                   if (tour && tour.mainPlayList) {
                     try {
                       tour.mainPlayList.set(
@@ -4477,7 +7189,7 @@ function findBusinessMatch(tourElement) {
                         `Navigated to parent panorama at index ${result.item.parentIndex}`,
                       );
 
-                      // Then trigger the element with retry logic
+                      // [6.19.1.17.6.22.4] Then trigger the element with retry logic
                       if (result.item.id) {
                         _triggerElement(tour, result.item.id, (success) => {
                           if (success) {
@@ -4499,17 +7211,13 @@ function findBusinessMatch(tourElement) {
                   }
                 }
 
-                // Save search term to history
-
-
-
-                // Clear search input
+                // [6.19.1.17.6.22.5] Clear search input
                 if (searchInput) {
                   searchInput.value = "";
                   searchInput.focus();
                 }
 
-                // Auto-hide based on configuration
+                // [6.19.1.17.6.22.6] Auto-hide based on configuration
                 const isMobile = window.innerWidth <= _config.mobileBreakpoint;
                 if (
                   (isMobile && _config.autoHide.mobile) ||
@@ -4519,7 +7227,7 @@ function findBusinessMatch(tourElement) {
                 }
               });
 
-              // Add keyboard navigation
+              // [6.19.1.17.6.23] Add keyboard navigation
               resultItem.addEventListener("keydown", (e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -4527,46 +7235,42 @@ function findBusinessMatch(tourElement) {
                 }
               });
 
-              // Add to group
+              // [6.19.1.17.6.24] Add to group
               groupEl.appendChild(resultItem);
             });
 
-            // Add group to results list
+            // [6.19.1.17.7] Add group to results list
             resultsList.appendChild(groupEl);
           });
 
-        // Update ARIA attribute for total results
+        // [6.19.1.18] Update ARIA attribute for total results
         resultsContainer.setAttribute("aria-setsize", resultIndex);
       } catch (error) {
         Logger.error("Search error:", error);
-        // Show error message in results
+        // [6.19.1.19] Show error message in results
         resultsList.innerHTML = `
-
-
-
                 <div class="search-error" role="alert">
                     <p>An error occurred while searching. Please try again.</p>
                     <p class="search-error-details">${error.message}</p>
                 </div>
             `;
 
-        // FIXED: Keep container visible for error messages
+        // [6.19.1.20] Keep container visible for error messages
         resultsContainer.classList.remove("hidden");
         resultsContainer.classList.add("visible");
         resultsContainer.classList.remove("no-results-bg"); // Use normal background for errors
       }
     };
 
-    // Set up keyboard navigation
-    // Use the centralized keyboardManager from the top of the module
-    // Initialize the keyboard manager with the search container and input
+    // [6.20] Set up keyboard navigation
+
     keyboardCleanup = keyboardManager.init(
       _elements.container,
       _elements.container.querySelector("#tourSearch"),
       performSearch,
     );
 
-    // Bind search event listeners for UI interactions
+    // [6.21] Bind search event listeners for UI interactions
     _bindSearchEventListeners(
       _elements.container,
       _elements.container.querySelector("#tourSearch"),
@@ -4575,13 +7279,13 @@ function findBusinessMatch(tourElement) {
       performSearch, // Pass the module-level performSearch function
     );
 
-    // Prepare the search index
+    // [6.22] Prepare the search index
     prepareFuse();
 
-    // Apply search styling
+    // [6.23] Apply search styling
     _applySearchStyling();
 
-    // Apply custom CSS for showing/hiding tags
+    // [6.24] Apply custom CSS for showing/hiding tags
     let styleElement = document.getElementById("search-custom-styles");
     if (styleElement) {
       styleElement.remove();
@@ -4592,12 +7296,12 @@ function findBusinessMatch(tourElement) {
       _config.showTagsInResults,
     );
 
-    // Get key elements
+    // [6.25] Get key elements
     const searchInput = _elements.container.querySelector("#tourSearch");
     const clearButton = _elements.container.querySelector(".clear-button");
     const searchIcon = _elements.container.querySelector(".search-icon");
 
-    // Bind all event listeners
+    // [6.26] Bind all event listeners
     _bindSearchEventListeners(
       _elements.container,
       searchInput,
@@ -4606,25 +7310,25 @@ function findBusinessMatch(tourElement) {
       performSearch, // Pass the module-level performSearch function
     );
 
-    // [5.4.1.1] Mark initialization as complete
+    // [6.27] Mark initialization as complete
     window.searchListInitialized = true;
     _initialized = true;
     Logger.info("Enhanced search initialized successfully");
   }
 
-  // [5.4.2] Search visibility toggle
+  // [7.0] Search Visibility Toggle
   let _lastToggleTime = 0;
   let _toggleDebounceTime = 300; // ms
   let _isSearchVisible = false; // Track the current state
 
-  // Then update your _toggleSearch function to handle rapid toggles
+  // [7.1] Toggle Search Function to Handle Rapid Toggles
   function _toggleSearch(show) {
-    // Get current state
+    // [7.2] Toggle search visibility
     const currentlyVisible =
       _elements.container && _elements.container.classList.contains("visible");
     _isSearchVisible = currentlyVisible;
 
-    // If 'show' is explicitly specified (not undefined) and matches current state, debounce it
+    // [7.2.2] If 'show' is explicitly specified and matches current state, debounce it
     if (
       show !== undefined &&
       ((show && currentlyVisible) || (!show && !currentlyVisible))
@@ -4632,17 +7336,17 @@ function findBusinessMatch(tourElement) {
       console.log(`[toggleSearch] Ignoring duplicate state request: ${show}`);
       return;
     }
-    // Debounce logic for double-calls from 3DVista toggle button
+
+    // [7.2.3] Debounce logic for double-calls from 3DVista toggle button
     const now = Date.now();
     if (now - _lastToggleTime < _toggleDebounceTime) {
       console.log("[toggleSearch] Ignoring rapid toggle call, debouncing");
-      return; // Ignore rapid repeated calls
+      return;
     }
     _lastToggleTime = now;
-    // Add toggle state tracking at the beginning of the function
-    // This enables proper toggle functionality without modifying 3DVista button code
+
+    // [7.2.4] Enable proper toggle functionality without modifying 3DVista button code
     if (show === undefined) {
-      // When no parameter is provided, toggle the current visibility state
       const isCurrentlyVisible =
         _elements.container &&
         _elements.container.classList.contains("visible");
@@ -4653,105 +7357,58 @@ function findBusinessMatch(tourElement) {
       );
     }
 
+    // KEEP: Debug Pro integration
     if (window.searchProDebug?.logSearchToggle) {
       window.searchProDebug.logSearchToggle(show, _elements);
     }
-    try {
-      const searchContainer = _elements.container;
-      const resultsContainer = searchContainer
-        ? searchContainer.querySelector(".search-results")
-        : null;
-      const resultsSection = searchContainer
-        ? searchContainer.querySelector(".results-section")
-        : null;
-      const noResults = searchContainer
-        ? searchContainer.querySelector(".no-results")
-        : null;
-      console.log("[toggleSearch] Called with show =", show);
-      if (!searchContainer) {
-        console.error("[toggleSearch] ERROR: searchContainer not found");
-      } else {
-        console.log(
-          "[toggleSearch] searchContainer display:",
-          getComputedStyle(searchContainer).display,
-        );
-      }
-      if (resultsContainer) {
-        console.log(
-          "[toggleSearch] resultsContainer display:",
-          getComputedStyle(resultsContainer).display,
-        );
-      } else {
-        console.log("[toggleSearch] resultsContainer not found");
-      }
-      if (resultsSection) {
-        console.log(
-          "[toggleSearch] resultsSection display:",
-          getComputedStyle(resultsSection).display,
-        );
-        console.log(
-          "[toggleSearch] resultsSection innerHTML:",
-          resultsSection.innerHTML,
-        );
-      } else {
-        console.log("[toggleSearch] resultsSection not found");
-      }
-      if (noResults) {
-        console.log(
-          "[toggleSearch] noResults display:",
-          getComputedStyle(noResults).display,
-        );
-      } else {
-        console.log("[toggleSearch] noResults not found");
-      }
-    } catch (err) {
-      console.error("[toggleSearch] Diagnostics error:", err);
-    }
 
-    // [7.2.1] Validate container exists
+    // [7.2.5] Validate container exists
     if (!_elements.container) {
       Logger.error("Search container not found");
       return;
     }
 
-    // Show search
+    // [7.2.6] Get animation configuration - FIX: Correct the logic
+    const animConfig = _config.animations || {};
+    const animEnabled = animConfig.enabled === true;
+
+    console.log("🎬 Animation config:", animConfig);
+    console.log("🎬 Animations enabled:", animEnabled);
 
     if (show) {
       console.log("[toggleSearch] Showing search UI");
-      // Update display before animation
 
-      _elements.container.classList.remove("hidden");
-      _elements.container.classList.add("visible");
-      try {
-        const resultsSection =
-          _elements.container.querySelector(".results-section");
-        if (resultsSection) {
-          console.log(
-            "[toggleSearch] After display block, resultsSection innerHTML:",
-            resultsSection.innerHTML,
-          );
-          console.log(
-            "[toggleSearch] After display block, resultsSection display:",
-            getComputedStyle(resultsSection).display,
-          );
+      // [7.2.7] Show search with animation
+      _elements.container.style.display = "block";
+      _elements.container.classList.remove("hiding", "closing", "hidden");
+
+      if (animEnabled) {
+        console.log("🎬 Applying opening animations");
+        _elements.container.classList.add("opening");
+
+        if (animConfig.searchBar?.scaleEffect) {
+          _elements.container.classList.add("scale-effect");
+          console.log("🎬 Scale effect enabled");
         }
-      } catch (err) {
-        console.error(
-          "[toggleSearch] Error logging resultsSection after display block:",
-          err,
-        );
+      } else {
+        console.log("🎬 Animations disabled - showing immediately");
       }
 
-      // Set ARIA expanded state
-      _aria.setExpanded(_elements.container, true);
+      // Force reflow to ensure display change is applied
+      _elements.container.offsetHeight;
 
-      // Ensure it's within viewport bounds
+      _elements.container.classList.add("visible");
+      _isSearchVisible = true;
+
+      // Set ARIA expanded state
+      _aria.setExpanded(_elements.input, true);
+
+      // KEEP: Viewport adjustment logic
       const viewportHeight = window.innerHeight;
       const searchContainerRect = _elements.container.getBoundingClientRect();
       const searchContainerTop = searchContainerRect.top;
       const searchContainerHeight = searchContainerRect.height;
 
-      // Adjust position if needed to keep within viewport
       if (searchContainerTop + searchContainerHeight > viewportHeight) {
         const newTop = Math.max(
           10,
@@ -4760,153 +7417,204 @@ function findBusinessMatch(tourElement) {
         _elements.container.style.setProperty("--container-top", `${newTop}px`);
       }
 
-      // Trigger animation on next frame
-      requestAnimationFrame(() => {
-        _elements.container.classList.add("visible");
-        try {
-          const resultsSection =
-            _elements.container.querySelector(".results-section");
-          if (resultsSection) {
-            console.log(
-              "[toggleSearch] After .visible add, resultsSection innerHTML:",
-              resultsSection.innerHTML,
-            );
-            console.log(
-              "[toggleSearch] After .visible add, resultsSection display:",
-              getComputedStyle(resultsSection).display,
-            );
-          }
-        } catch (err) {
-          console.error(
-            "[toggleSearch] Error logging resultsSection after .visible add:",
-            err,
-          );
-        }
-
-        // Focus input field
-        if (_elements.input) {
-          _elements.input.focus();
-          console.log("[toggleSearch] Focused search input");
-        }
-      });
+      // [7.2.7.2] Focus search input after animation
+      const focusDelay = animEnabled
+        ? animConfig.searchBar?.openDuration || 300
+        : 0;
+      setTimeout(() => {
+        if (_elements.input) _elements.input.focus();
+      }, focusDelay);
     } else {
-      // Hide search
-      _elements.container.classList.remove("visible");
-      try {
-        const resultsSection =
-          _elements.container.querySelector(".results-section");
-        if (resultsSection) {
-          console.log(
-            "[toggleSearch] After .visible remove, resultsSection innerHTML:",
-            resultsSection.innerHTML,
-          );
-          console.log(
-            "[toggleSearch] After .visible remove, resultsSection display:",
-            getComputedStyle(resultsSection).display,
-          );
-        }
-      } catch (err) {
-        console.error(
-          "[toggleSearch] Error logging resultsSection after .visible remove:",
-          err,
-        );
+      // [7.2.8] Hide search with animation
+      console.log("[toggleSearch] Hiding search UI");
+
+      _elements.container.classList.remove("visible", "opening");
+
+      if (animEnabled) {
+        console.log("🎬 Applying closing animations");
+        _elements.container.classList.add("hiding", "closing");
+      } else {
+        console.log("🎬 Animations disabled - hiding immediately");
       }
 
-      // Reset search results container
-      const resultsContainer =
-        _elements.container.querySelector(".search-results");
-      if (resultsContainer) {
-        resultsContainer.classList.remove("visible", "no-results-bg");
-        resultsContainer.classList.add("hidden");
+      _isSearchVisible = false;
+
+      // Clear search immediately
+      if (_elements.input) {
+        _elements.input.value = "";
+        _elements.input.blur();
+      }
+      if (_elements.results) {
+        _elements.results.style.display = "none";
+        _elements.results.classList.remove("visible");
+      }
+      if (_elements.clearButton) {
+        _elements.clearButton.classList.remove("visible");
       }
 
       // Set ARIA expanded state
-      _aria.setExpanded(_elements.container, false);
+      _aria.setExpanded(_elements.input, false);
 
-      // Wait for transition to complete before hiding
+      // [7.2.8.1] Wait for transition to complete before hiding
+      const hideDelay = animEnabled
+        ? animConfig.searchBar?.closeDuration || 200
+        : 0;
+
       setTimeout(() => {
         if (!_elements.container.classList.contains("visible")) {
-          _elements.container.classList.remove("visible");
+          _elements.container.style.display = "none";
+          _elements.container.classList.remove(
+            "hiding",
+            "closing",
+            "scale-effect",
+          );
           _elements.container.classList.add("hidden");
-          try {
-            const resultsSection =
-              _elements.container.querySelector(".results-section");
-            if (resultsSection) {
-              console.log(
-                "[toggleSearch] After display none, resultsSection innerHTML:",
-                resultsSection.innerHTML,
-              );
-              console.log(
-                "[toggleSearch] After display none, resultsSection display:",
-                getComputedStyle(resultsSection).display,
-              );
-            }
-          } catch (err) {
-            console.error(
-              "[toggleSearch] Error logging resultsSection after display none:",
-              err,
-            );
-          }
+          console.log("🎬 Container hidden after animation delay");
         }
-      }, 350);
+      }, hideDelay + 50);
 
-      // Clean up after animation
+      // KEEP: Extended cleanup
       setTimeout(() => {
-        // Reset input and UI
         if (_elements.input) {
           _elements.input.value = "";
           _elements.input.blur();
-          console.log("[toggleSearch] Cleared and blurred search input");
         }
-      }, 400);
 
-      // Clear UI elements
-      setTimeout(() => {
-        // Update cached elements
+        // Clear UI elements
         if (_elements.clearButton) {
           _elements.clearButton.classList.remove("visible");
-          console.log("[toggleSearch] Cleared clearButton visibility");
-        }
-
-        if (_elements.searchIcon) {
-          _elements.searchIcon.classList.remove("icon-hidden");
-          _elements.searchIcon.classList.add("icon-visible");
-          console.log("[toggleSearch] Reset searchIcon opacity");
         }
 
         // Clear results
-        if (_elements.results) {
-          const resultsList =
-            _elements.container.querySelector(".results-section");
-          if (resultsList) {
-            resultsList.innerHTML = "";
-            console.log("[toggleSearch] Cleared resultsSection innerHTML");
-          }
+        const resultsList =
+          _elements.container.querySelector(".results-section");
+        if (resultsList) {
+          resultsList.innerHTML = "";
         }
 
-        // Hide any error messages
+        // Hide error messages
         const noResults = _elements.container.querySelector(".no-results");
         if (noResults) {
           noResults.classList.remove("visible");
           noResults.classList.add("hidden");
-          console.log("[toggleSearch] Hid noResults");
         }
-      }, 200); // Match the CSS transition duration
+      }, hideDelay + 200);
     }
   }
+  // [7.3] Update the ARIA state
+  function _updateAnimationCSSVariables() {
+    const animConfig = _config.animations || {};
+    const root = document.documentElement;
 
-  // [6.0] PUBLIC API
+    console.log("🎬 Setting animation CSS variables:", animConfig);
+
+    // Check if animations are enabled and respect reduced motion
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const animationsEnabled =
+      animConfig.enabled &&
+      (!prefersReducedMotion || !animConfig.reducedMotion?.respectPreference);
+
+    console.log("🎬 Animations enabled:", animationsEnabled);
+    console.log("🎬 Prefers reduced motion:", prefersReducedMotion);
+
+    // Set animation state
+    root.style.setProperty(
+      "--animations-enabled",
+      animationsEnabled ? "1" : "0",
+    );
+
+    // Set timing variables
+    if (animationsEnabled) {
+      root.style.setProperty(
+        "--animation-easing",
+        animConfig.easing || "cubic-bezier(0.22, 1, 0.36, 1)",
+      );
+      root.style.setProperty(
+        "--animation-fast-duration",
+        `${animConfig.duration?.fast || 200}ms`,
+      );
+      root.style.setProperty(
+        "--animation-normal-duration",
+        `${animConfig.duration?.normal || 300}ms`,
+      );
+      root.style.setProperty(
+        "--animation-slow-duration",
+        `${animConfig.duration?.slow || 500}ms`,
+      );
+      root.style.setProperty(
+        "--animation-open-duration",
+        `${animConfig.searchBar?.openDuration || 300}ms`,
+      );
+      root.style.setProperty(
+        "--animation-close-duration",
+        `${animConfig.searchBar?.closeDuration || 200}ms`,
+      );
+      root.style.setProperty(
+        "--animation-results-duration",
+        `${animConfig.results?.fadeInDuration || 200}ms`,
+      );
+      root.style.setProperty(
+        "--animation-slide-distance",
+        `${animConfig.results?.slideDistance || 10}px`,
+      );
+      root.style.setProperty(
+        "--animation-stagger-delay",
+        `${animConfig.results?.staggerDelay || 50}ms`,
+      );
+    } else {
+      // Use reduced motion settings or disable animations entirely
+      const fallbackDuration = animConfig.reducedMotion?.fallbackDuration || 0;
+      root.style.setProperty("--animation-easing", "ease");
+      root.style.setProperty(
+        "--animation-fast-duration",
+        `${fallbackDuration}ms`,
+      );
+      root.style.setProperty(
+        "--animation-normal-duration",
+        `${fallbackDuration}ms`,
+      );
+      root.style.setProperty(
+        "--animation-slow-duration",
+        `${fallbackDuration}ms`,
+      );
+      root.style.setProperty(
+        "--animation-open-duration",
+        `${fallbackDuration}ms`,
+      );
+      root.style.setProperty(
+        "--animation-close-duration",
+        `${fallbackDuration}ms`,
+      );
+      root.style.setProperty(
+        "--animation-results-duration",
+        `${fallbackDuration}ms`,
+      );
+      root.style.setProperty("--animation-slide-distance", "0px");
+      root.style.setProperty("--animation-stagger-delay", "0ms");
+    }
+
+    // Set scale effect preference
+    root.style.setProperty(
+      "--animation-scale-enabled",
+      animationsEnabled && animConfig.searchBar?.scaleEffect ? "1" : "0",
+    );
+
+    console.log("🎬 Animation CSS variables applied");
+  }
+  // [8.0] Public API
   return {
-    // [6.1] DOM elements cache
+    // [8.1] DOM Elements Cache
     elements: _elements,
-    // [6.2] Initialize search functionality
+    // [8.2] Initialize Search Functionality
     initializeSearch: function (tour) {
       try {
         if (!tour) {
           throw new Error("Tour instance is required for initialization");
         }
 
-        // Find the search container if it's not already set
+        // [8.2.1] Find the search container if it's not already set
         if (!_elements.container) {
           _elements.container = document.getElementById("searchContainer");
           if (!_elements.container) {
@@ -4922,7 +7630,7 @@ function findBusinessMatch(tourElement) {
       }
     },
 
-    // [6.3] Toggle search visibility
+    // [8.3] Toggle Search Visibility
     toggleSearch: function (show) {
       // Find the search container if it's not already set
       if (!_elements.container) {
@@ -4937,22 +7645,128 @@ function findBusinessMatch(tourElement) {
       _toggleSearch(show);
     },
 
-    // [6.4] Update configuration
     updateConfig: function (newConfig) {
       try {
-        // [6.4.1] Validate configuration object
+        // [8.4.1] Validate configuration object
         if (!newConfig || typeof newConfig !== "object") {
           throw new Error("Invalid configuration object");
         }
 
-        // Deep merge function
+        // [8.4.1.1] Handle animation configuration with CSS variables FIRST
+        if (newConfig.animations) {
+          console.log(
+            "🎬 Processing animation configuration:",
+            newConfig.animations,
+          );
+
+          // Update internal config
+          if (!_config.animations) _config.animations = {};
+
+          // Deep merge animation settings
+          _config.animations = {
+            enabled:
+              newConfig.animations.enabled !== undefined
+                ? newConfig.animations.enabled
+                : _config.animations.enabled,
+            duration: {
+              ..._config.animations.duration,
+              ...newConfig.animations.duration,
+            },
+            easing: newConfig.animations.easing || _config.animations.easing,
+            searchBar: {
+              ..._config.animations.searchBar,
+              ...newConfig.animations.searchBar,
+            },
+            results: {
+              ..._config.animations.results,
+              ...newConfig.animations.results,
+            },
+            reducedMotion: {
+              ..._config.animations.reducedMotion,
+              ...newConfig.animations.reducedMotion,
+            },
+          };
+
+          // Update CSS variables immediately
+          if (newConfig.animations.enabled !== undefined) {
+            const root = document.documentElement;
+            root.style.setProperty(
+              "--animations-enabled",
+              newConfig.animations.enabled ? "1" : "0",
+            );
+            root.style.setProperty(
+              "--animation-scale-enabled",
+              newConfig.animations.enabled ? "1" : "0",
+            );
+
+            console.log(
+              `🎬 CSS Variables Updated: enabled=${newConfig.animations.enabled}`,
+            );
+          }
+
+          // Update timing variables if provided
+          if (newConfig.animations.results?.fadeInDuration) {
+            document.documentElement.style.setProperty(
+              "--animation-results-duration",
+              newConfig.animations.results.fadeInDuration + "ms",
+            );
+          }
+          if (newConfig.animations.searchBar?.openDuration) {
+            document.documentElement.style.setProperty(
+              "--animation-open-duration",
+              newConfig.animations.searchBar.openDuration + "ms",
+            );
+          }
+          if (newConfig.animations.searchBar?.closeDuration) {
+            document.documentElement.style.setProperty(
+              "--animation-close-duration",
+              newConfig.animations.searchBar.closeDuration + "ms",
+            );
+          }
+          if (newConfig.animations.results?.slideDistance) {
+            document.documentElement.style.setProperty(
+              "--animation-slide-distance",
+              newConfig.animations.results.slideDistance + "px",
+            );
+          }
+          if (newConfig.animations.easing) {
+            document.documentElement.style.setProperty(
+              "--animation-easing",
+              newConfig.animations.easing,
+            );
+          }
+
+          console.log("🎬 Final animation config:", _config.animations);
+        }
+
+        const searchContainer = document.getElementById("searchContainer");
+        const viewer = document.getElementById("viewer");
+
+        if (searchContainer || viewer) {
+          // Apply styling updates only if we have a container or can create one
+          _applySearchStyling();
+        } else {
+          Logger.warn(
+            "DOM not ready for styling updates, will apply when search is initialized",
+          );
+        }
+
+        // Reinitialize if already initialized
+        if (_initialized && window.tourInstance) {
+          _initializeSearch(window.tourInstance);
+        }
+
+        // Update animation CSS variables (call this after config merge)
+        _updateAnimationCSSVariables();
+
+        // [8.4.2] Deep merge function
         function deepMerge(target, source) {
-          // Handle null/undefined values
+          // [8.4.2.1] Handle null/undefined values
           if (!source) return target;
           if (!target) return source;
 
           for (const key in source) {
-            // Skip prototype properties and undefined values
+            // [8.4.2.2] Skip prototype properties and undefined values
             if (
               !Object.prototype.hasOwnProperty.call(source, key) ||
               source[key] === undefined
@@ -4960,21 +7774,21 @@ function findBusinessMatch(tourElement) {
               continue;
             }
 
-            // Deep merge for objects that aren't arrays
+            // [8.4.2.3] Deep merge for objects that aren't arrays
             if (
               source[key] &&
               typeof source[key] === "object" &&
               !Array.isArray(source[key])
             ) {
-              // Create empty target object if needed
+              // [8.4.2.3.1] Create empty target object if needed
               if (!target[key] || typeof target[key] !== "object") {
                 target[key] = {};
               }
 
-              // Recurse for nested objects
+              // [8.4.2.3.2] Recurse for nested objects
               deepMerge(target[key], source[key]);
             } else {
-              // Direct assignment for primitives and arrays
+              // [8.4.2.4] Direct assignment for primitives and arrays
               target[key] = source[key];
             }
           }
@@ -4982,7 +7796,7 @@ function findBusinessMatch(tourElement) {
           return target;
         }
 
-        // Use the ConfigBuilder if the format is appropriate
+        // [8.4.3] Use the ConfigBuilder if the format is appropriate
         if (typeof newConfig === "object" && !Array.isArray(newConfig)) {
           if (
             newConfig.display ||
@@ -4990,9 +7804,14 @@ function findBusinessMatch(tourElement) {
             newConfig.filter ||
             newConfig.useAsLabel ||
             newConfig.appearance ||
-            newConfig.searchBar
+            newConfig.searchBar ||
+            newConfig.thumbnailSettings ||
+            newConfig.displayLabels ||
+            newConfig.businessData ||
+            newConfig.googleSheets ||
+            newConfig.animations
           ) {
-            // Looks like a configuration object suitable for the builder
+            // [8.4.3.1] Looks like a configuration object suitable for the builder
             const builder = new ConfigBuilder();
 
             if (newConfig.display) {
@@ -5019,31 +7838,61 @@ function findBusinessMatch(tourElement) {
               builder.setSearchBarOptions(newConfig.searchBar);
             }
 
+            if (newConfig.thumbnailSettings) {
+              builder.setThumbnailSettings(newConfig.thumbnailSettings);
+            }
+
             if (newConfig.displayLabels) {
               builder.setDisplayLabels(newConfig.displayLabels);
             }
 
-            // General options
+            if (newConfig.businessData) {
+              builder.setBusinessDataOptions(newConfig.businessData);
+            }
+
+            if (newConfig.googleSheets) {
+              builder.setGoogleSheetsOptions(newConfig.googleSheets);
+            }
+
+            if (newConfig.animations) {
+              builder.setAnimationOptions(newConfig.animations);
+            }
+
+            if (newConfig.searchSettings) {
+              builder.setSearchOptions(newConfig.searchSettings);
+            }
+
+            // [8.4.3.2] General options
             builder.setGeneralOptions(newConfig);
 
-            // Build the config
+            // [8.4.3.3] Build the config
             const builtConfig = builder.build();
 
-            // Merge with existing config
-            _config = deepMerge(_config, builtConfig);
+            // [8.4.3.4] Merge with existing config (but skip animations since we handled it above)
+            const configToMerge = { ...builtConfig };
+            delete configToMerge.animations; // Don't double-merge animations
+            _config = deepMerge(_config, configToMerge);
           } else {
-            // Not structured for the builder, just deep merge
-            _config = deepMerge(_config, newConfig);
+            // [8.4.3.5] Not structured for the builder, just deep merge (but skip animations)
+            const configToMerge = { ...newConfig };
+            delete configToMerge.animations; // Don't double-merge animations
+            _config = deepMerge(_config, configToMerge);
           }
         }
 
-        // Apply styling updates
+        // [8.4.4] Apply styling updates
         _applySearchStyling();
 
-        // Reinitialize if already initialized
+        // [8.4.5] Reinitialize if already initialized
         if (_initialized && window.tourInstance) {
           _initializeSearch(window.tourInstance);
         }
+
+        // [8.4.6] Debug Google Sheets URL
+        console.log(
+          "[DEBUG] Google Sheets URL being used:",
+          window.searchFunctions.getConfig().googleSheets.googleSheetUrl,
+        );
 
         return this.getConfig();
       } catch (error) {
@@ -5052,7 +7901,7 @@ function findBusinessMatch(tourElement) {
       }
     },
 
-    // [6.5] Get current configuration
+    // [8.5] Get Current Configuration
     getConfig: function () {
       try {
         return JSON.parse(JSON.stringify(_config));
@@ -5062,7 +7911,7 @@ function findBusinessMatch(tourElement) {
       }
     },
 
-    // [6.6] Search history management
+    // [8.6] Search History Management
     searchHistory: {
       get() {
         return []; // No history feature
@@ -5075,49 +7924,145 @@ function findBusinessMatch(tourElement) {
       },
     },
 
-    // [6.7] Logging control
+    // [8.7] Logging Control
     setLogLevel(level) {
-      if (typeof level === "number" && level >= 0 && level <= 4) {
-        Logger.level = level;
-        return true;
-      }
-      return false;
+      // Use the centralized Logger's setLevel method instead of directly modifying Logger.level
+      return Logger.setLevel(level);
     },
 
-    // [6.8] Utility functions
+    // [8.8] Utility Functions
     utils: {
       debounce: _debounce,
       getElementType: _getElementType,
       triggerElement: _triggerElement,
+      normalizeImagePath: _normalizeImagePath,
+
+      // [8.8.1] Utility for image handling
+      imageUtils: {
+        getImageExtension: function (path) {
+          if (!path) return "";
+          const match = path.match(/\.([^.]+)$/);
+          return match ? match[1].toLowerCase() : "";
+        },
+
+        isImagePath: function (path) {
+          if (!path) return false;
+          const ext = this.getImageExtension(path);
+          return ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+        },
+
+        getAlternateFormat: function (path) {
+          if (!path) return "";
+          const ext = this.getImageExtension(path);
+
+          if (ext === "jpg" || ext === "jpeg") {
+            return path.replace(/\.(jpg|jpeg)$/i, ".png");
+          } else if (ext === "png") {
+            return path.replace(/\.png$/i, ".jpg");
+          }
+
+          return "";
+        },
+      },
+    },
+
+    // [8.9] Expose Google Sheets Data Accessor
+    _getGoogleSheetsData: function () {
+      return _googleSheetsData || [];
+    },
+    // [8.10] Expose Business Data Accessor
+    _getBusinessData: function () {
+      return _businessData || [];
+    },
+
+    // [8.11] Expose Search Index Accessor
+    getSearchIndex: function () {
+      return fuse ? fuse._docs || [] : [];
+    },
+
+    // [8.12] Expose Business Matching Function
+    findBusinessMatch: function (elementData) {
+      return findBusinessMatch(elementData);
     },
   };
 })();
 
-// [7.0] GLOBAL EXPORTS
+// [9.0] SECTION: Global Exports
 window.searchFunctions = window.tourSearchFunctions;
 
-// Initialize with better sequence control
-// DOM ready handler for search initialization
+// [9.1] Method: ensurePlaylistsReady() - Combined Playlist Readiness Detection Utility
+function ensurePlaylistsReady(callback) {
+  if (
+    window.tour &&
+    window.tour._isInitialized &&
+    window.tour.mainPlayList &&
+    typeof window.tour.mainPlayList.get === "function" &&
+    window.tour.mainPlayList.get("items") &&
+    window.tour.mainPlayList.get("items").length > 0
+  ) {
+    callback();
+    return;
+  }
+  if (
+    window.tour &&
+    typeof window.TDV !== "undefined" &&
+    window.TDV.Tour &&
+    window.TDV.Tour.EVENT_TOUR_LOADED &&
+    typeof window.tour.bind === "function"
+  ) {
+    window.tour.bind(window.TDV.Tour.EVENT_TOUR_LOADED, callback);
+  } else {
+    setTimeout(() => ensurePlaylistsReady(callback), 100);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", function () {
-  // Wait for a short time to ensure DOM is stable
+  // [9.1] Wait for a short time to ensure DOM is stable
   setTimeout(function () {
-    // Find the search container in DOM
+    if (!window.Logger || typeof window.Logger.debug !== "function") {
+      console.warn(
+        "[Search] Logger not properly initialized, using console fallback",
+      );
+      window.Logger = window.Logger || {};
+      window.Logger.debug =
+        window.Logger.debug ||
+        function (msg, ...args) {
+          console.debug("[Search] DEBUG:", msg, ...args);
+        };
+      window.Logger.info =
+        window.Logger.info ||
+        function (msg, ...args) {
+          console.info("[Search] INFO:", msg, ...args);
+        };
+      window.Logger.warn =
+        window.Logger.warn ||
+        function (msg, ...args) {
+          console.warn("[Search] WARN:", msg, ...args);
+        };
+      window.Logger.error =
+        window.Logger.error ||
+        function (msg, ...args) {
+          console.error("[Search] ERROR:", msg, ...args);
+        };
+    }
+
+    // [9.1.1] Logic Block: Find the search container in DOM
     const containerEl = document.getElementById("searchContainer");
 
-    // If container exists in DOM but not in cache, update the cache
+    // [9.1.2] Logic Block: If container exists in DOM but not in cache, update the cache
     if (
       containerEl &&
       (!window.searchFunctions || !window.searchFunctions.elements.container)
     ) {
-      console.log(
+      Logger.debug(
         "[Search] Found existing searchContainer in DOM, updating element cache",
       );
 
-      // Update the elements cache directly
+      // [9.1.2.1] Logic Block: Update the elements cache directly
       if (window.searchFunctions && window.searchFunctions.elements) {
         window.searchFunctions.elements.container = containerEl;
 
-        // Also update child element references
+        // [9.1.2.1.1] Logic Block: Also update child element references
         window.searchFunctions.elements.input =
           containerEl.querySelector("#tourSearch");
         window.searchFunctions.elements.results =
@@ -5128,25 +8073,591 @@ document.addEventListener("DOMContentLoaded", function () {
           containerEl.querySelector(".search-icon");
       }
     }
+// ==========================================
+// *** THIS IS WHERE END USERS CAN START MAKING CHANGES ***
+//     Configure your search experience.
+// ==========================================
 
-    // Now update the config - this should work with the updated element references
-    if (window.searchFunctions) {
-      window.searchFunctions.updateConfig({
-        businessData: {
-          useBusinessData: true,
-          businessDataFile: "business.json",
-          businessDataDir: "business-data",
-          matchField: "id",
-          businessDataUrl: `${window.location.origin}${window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/"))}/search-pro-non-mod/business-data/business.json`,
+// [10.0] Now update the config
+if (window.searchFunctions) {
+  window.searchFunctions.updateConfig({
+
+  // ==========================================
+  // GENERAL TAB - Search Bar Settings
+  // ==========================================
+    // [10.1] General Settings
+    autoHide: {
+      mobile: false, // Auto-hide search on mobile after selection
+      desktop: false, // Auto-hide search on desktop after selection
+    },
+    mobileBreakpoint: 768, // Breakpoint for mobile devices
+    minSearchChars: 2, // Minimum characters required for search
+    showTagsInResults: false, // Show tags in search results
+    elementTriggering: {
+      initialDelay: 300, // Initial delay before triggering element
+      maxRetries: 3, // Maximum number of retries
+      retryInterval: 300, // Interval between retries
+      maxRetryInterval: 1000, // Maximum retry interval
+      baseRetryInterval: 300, // Base retry interval
+    },
+
+    // [10.2] Search Bar Positioning and Layout
+    searchBar: {
+      placeholder: "Search... Type * for all", // Placeholder text for search input
+      width: 350, // Width in pixels for desktop
+      position: {
+        top: 70, // Position from top
+        right: 70, // Position from right
+        left: null, // Position from left (use null if positioning from right)
+        bottom: null, // Position from bottom (use null if positioning from top)
+      },
+      useResponsive: true, // Whether to use responsive positioning
+      mobilePosition: {
+        top: 60, // Position from top on mobile
+        left: 20, // Position from left on mobile
+        right: 20, // Position from right on mobile
+        bottom: "auto", // Position from bottom on mobile
+      },
+      mobileOverrides: {
+        enabled: true, // Enable mobile-specific overrides
+        breakpoint: 768, // Mobile breakpoint in pixels
+        width: "90%", // Width on mobile (can be percentage)
+        maxWidth: 350, // Maximum width on mobile in pixels
+        visibility: {
+          behavior: "dynamic", // 'dynamic', 'fixed', 'toggle'
+          showOnScroll: true, // Show when scrolling
+          hideThreshold: 100, // Hide when scrolling past this threshold
         },
-      });
-      // Then force reinitialization if tour is available
+      },
+    },
+
+  // ==========================================
+  // APPEARANCE TAB - Visual Style Settings
+  // ==========================================
+    // [10.3] Appearance Settings
+    appearance: {
+      searchField: {
+        borderRadius: {
+          topLeft: 35, // *** Top left border radius (px)
+          topRight: 35, // *** Top right border radius (px)
+          bottomRight: 35, // *** Bottom right border radius (px)
+          bottomLeft: 35, // *** Bottom left border radius (px)
+        },
+      },
+      searchResults: {
+        borderRadius: {
+          topLeft: 5, // *** Top left border radius (px)
+          topRight: 5, // *** Top right border radius (px)
+          bottomRight: 5, // *** Bottom right border radius (px)
+          bottomLeft: 5, // *** Bottom left border radius (px)
+        },
+      },
+
+      // [10.4] Color Settings
+      colors: {
+        searchBackground: "#f4f3f2", // *** Search bar background color
+        searchText: "#1a1a1a", // *** Search bar text color
+        placeholderText: "#94a3b8", // *** Search bar placeholder text color
+        searchIcon: "#94a3b8", // *** Search bar icon color
+        clearIcon: "#94a3b8", // *** Search bar clear icon color
+        resultsBackground: "#ffffff", // *** Search results background color
+        groupHeaderColor: "#20293A", // *** Search results group header color
+        groupCountColor: "#94a3b8", // *** Search results group count color
+        resultHover: "#f0f0f0", // *** Search results hover color
+        resultBorderLeft: "#ebebeb", // *** Search results border left color
+        resultText: "#1e293b", // *** Search results text color
+        resultSubtitle: "#64748b", // *** Search results subtitle color
+        resultIconColor: "#6e85f7", // *** Search results icon color
+        resultSubtextColor: "#000000", // *** Search results subtext color
+        tagBackground: "#e0f2fe", // *** Light blue background for tags
+        tagText: "#0369a1", // *** Dark blue text for tags
+        tagBorder: "#0891b2", // *** Medium blue border for tags
+        
+      // *** Search results highlight colors
+        highlightBackground: "#ffff00", // *** Highlight background color (default: yellow)
+        highlightBackgroundOpacity: 0.5, // *** Highlight background opacity (0-1)
+        highlightText: "#000000", // *** Highlight text color
+        highlightWeight: "bold", // *** Highlight font weight: 'normal', 'bold', etc.
+      },
+
+      // [10.5] Tag Appearance Settings
+      tags: {
+        borderRadius: 16, // *** Rounded tag pills (0-20 recommended)
+        fontSize: "11px", // *** Tag text size
+        padding: "3px 10px", // *** Internal spacing (vertical horizontal)
+        margin: "2px", // *** Space between tags
+        fontWeight: "600", // *** Text weight (400=normal, 600=semibold, 700=bold)
+        textTransform: "uppercase", // *** "none", "uppercase", "lowercase", "capitalize"
+        showBorder: true, // *** true or false - Show tag borders
+        borderWidth: "1px", // *** Border thickness
+      },
+    },
+
+    // [10.6] Thumbnail Settings
+    thumbnailSettings: {
+      enableThumbnails: false, // *** true or false - Enable custom thumbnails
+      thumbnailSize: "medium", // "small", "medium", "large"
+      thumbnailSizePx: 120, // *** Thumbnail size in pixels
+      borderRadius: 4, // *** Border radius in pixels
+      borderColor: "#9CBBFF", // *** Border color for thumbnails
+      borderWidth: 4, // *** Border width in pixels
+      defaultImagePath: "./search-pro-non-mod/assets/default-thumbnail.jpg", // *** Default thumbnail path
+      defaultImages: {
+        Panorama: "./search-pro-non-mod/assets/default-thumbnail.jpg", // *** Panorama default thumbnail path
+        Hotspot: "./search-pro-non-mod/assets/hotspot-default.jpg", // *** Hotspot default thumbnail path
+        Polygon: "./search-pro-non-mod/assets/polygon-default.jpg", // *** Polygon default thumbnail path
+        Video: "./search-pro-non-mod/assets/video-default.jpg", // *** Video default thumbnail path
+        Webframe: "./search-pro-non-mod/assets/webframe-default.jpg", // *** Webframe default thumbnail path
+        Image: "./search-pro-non-mod/assets/image-default.jpg", // *** Image default thumbnail path
+        Text: "./search-pro-non-mod/assets/text-default.jpg", // *** Text default thumbnail path
+        ProjectedImage: "./search-pro-non-mod/assets/projected-image-default.jpg", // *** Projected image default thumbnail path
+        Element: "./search-pro-non-mod/assets/element-default.jpg", // *** Element default thumbnail path
+        Business: "./search-pro-non-mod/assets/business-default.jpg", // *** Business default thumbnail path
+        "3DModel": "./search-pro-non-mod/assets/3d-model-default.jpg", // *** 3D model default thumbnail path
+        "3DHotspot": "./search-pro-non-mod/assets/3d-hotspot-default.jpg", // *** 3D hotspot default thumbnail path
+        "3DModelObject": "./search-pro-non-mod/assets/3d-model-object-default.jpg", // *** 3D model object default thumbnail path
+        default: "./search-pro-non-mod/assets/default-thumbnail.jpg", // *** Default thumbnail path
+      },
+      groupHeaderAlignment: "left", // "left","right"
+      groupHeaderPosition: "top", // "top", "bottom"
+      showFor: {
+        panorama: false, // *** Show thumbnails for panoramas
+        hotspot: false, // *** Show thumbnails for hotspots
+        polygon: true, // *** Show thumbnails for polygons
+        video: true, // *** Show thumbnails for videos
+        webframe: true, // *** Show thumbnails for webframes
+        image: true, // *** Show thumbnails for images
+        text: true, // *** Show thumbnails for text elements
+        projectedImage: true, // *** Show thumbnails for projected images
+        element: true, // *** Show thumbnails for elements
+        business: true, // *** Show thumbnails for businesses
+        "3dmodel": true, // *** Show thumbnails for 3D models
+        "3dhotspot": true, // *** Show thumbnails for 3D hotspots
+        "3dmodelobject": true, // *** Show thumbnails for 3D model objects
+        other: true, // *** Show thumbnails for other elements
+      },
+    },
+
+  // ==========================================
+  // DISPLAY TAB - Control How Elements Appear
+  // ==========================================
+    // [10.7] Display Settings
+    display: {
+      showGroupHeaders: true, // Show group headers in search results
+      showGroupCount: true, // Show count of items in each group
+      showIconsInResults: true, // Show icons in search results
+      onlySubtitles: false, // Only show subtitles (no labels)
+      showSubtitlesInResults: true, // Show subtitles in search results
+      showParentLabel: true, // Show parent label for child elements
+      showParentInfo: true, // Show parent info for child elements
+      showParentTags: true, // Show parent tags for child elements
+      showParentType: true, // Show parent type for child elements
+    },
+
+    // [10.8] Label Customization
+    displayLabels: {
+      Panorama: "Panorama", // *** Display label for panoramas
+      Hotspot: "Hotspot", // *** Display label for hotspots
+      Polygon: "Polygon", // *** Display label for polygons
+      Video: "Video", // *** Display label for videos
+      Webframe: "Webframe", // *** Display label for webframes
+      Image: "Image", // *** Display label for images
+      Text: "Text", // *** Display label for text elements
+      ProjectedImage: "Projected Image", // *** Display label for projected images
+      Element: "Element", // *** Display label for elements
+      Business: "Business", // *** Display label for businesses
+      "3DHotspot": "3D Hotspot", // *** Display label for 3D hotspots
+      "3DModel": "3D Model", // *** Display label for 3D models
+      "3DModelObject": "3D Model Object", // *** Display label for 3D model objects
+    },
+
+    // [10.9] Label Fallback Options
+    useAsLabel: {
+      subtitles: true, // Use subtitles as labels when labels are missing
+      tags: true, // Use tags as labels when labels and subtitles are missing
+      elementType: false, // Use element type as label when all else is missing
+      parentWithType: false, // Include parent type with label
+      customText: "[Unnamed Item]", // Custom text for unnamed items
+    },
+
+  // ==========================================
+  // CONTENT TAB - Control What Appears in Search
+  // ==========================================
+  // [10.10] Content Inclusion Options
+    includeContent: {
+      unlabeledWithSubtitles: true, // Include items with no label but with subtitles
+      unlabeledWithTags: true, // Include items with no label but with tags
+      completelyBlank: true, // Include completely blank items
+      elements: {
+        includePanoramas: true, // Include panoramas in search results
+        includeHotspots: true, // Include hotspots in search results
+        includePolygons: true, // Include polygons in search results
+        includeVideos: true, // Include videos in search results
+        includeWebframes: true, // Include webframes in search results
+        includeImages: true, // Include images in search results
+        includeText: true, // Include text elements in search results
+        includeProjectedImages: true, // Include projected images in search results
+        include3DHotspots: true, // Include 3D hotspots in search results
+        include3DModels: true, // Include 3D models in search results
+        include3DModelObjects: true, // Include 3D model objects in search results
+        includeBusiness: true, // Include business elements in search results
+        skipEmptyLabels: false, // Skip elements with empty labels
+        minLabelLength: 0, // Minimum label length to include
+      },
+    },
+     
+// ==========================================
+// FILTERING TAB - Filter Which Content Appears
+// ==========================================
+// OVERVIEW: Filtering allows you to control which content appears in search results.
+// - Use "whitelist" mode to ONLY show specified content
+// - Use "blacklist" mode to HIDE specified content 
+// - Use "none" mode to disable filtering (show everything)
+// ==========================================
+
+  // [10.11] Element Filtering Options
+  filter: {
+    // Top-level filter controls ALL content based on label/value text matching
+    mode: "none", // "none" (show all), "whitelist" (only show allowed), "blacklist" (hide specified)
+    allowedValues: [""], // Values to allow if mode is "whitelist" - any text that appears in labels/subtitles
+    blacklistedValues: [""], // Values to block if mode is "blacklist" - any text that appears in labels/subtitles
+    
+    // Media index filtering allows you to include/exclude specific panoramas by position in tour
+    allowedMediaIndexes: [""], // Specific panorama indexes to allow, e.g. ["0", "1", "5"] shows only the 1st, 2nd, and 6th panoramas
+    blacklistedMediaIndexes: [""], // Specific panorama indexes to block, e.g. ["0", "3"] hides the 1st and 4th panoramas
+    
+    // Filter based on element type (Panorama, Hotspot, Video, etc.)
+    elementTypes: {
+      mode: "none", // "none" (show all types), "whitelist" (only show specified types), "blacklist" (hide specified types)
+      allowedTypes: [""], // Element types to include, e.g. ["Panorama", "Hotspot", "3DModel"] will ONLY show these types
+      blacklistedTypes: [""], // Element types to exclude, e.g. ["Text", "Element"] will HIDE these types but show all others
+    },
+    
+    // Filter based on partial text matches in element labels
+    elementLabels: {
+      mode: "none", // "none" (show all labels), "whitelist" (only labels containing allowed text), "blacklist" (hide labels with specified text)
+      allowedValues: [""], // Show only elements with these words in their labels, e.g. ["Room", "Office"] shows only elements containing "Room" or "Office"
+      blacklistedValues: [""], // Hide elements with these words in their labels, e.g. ["test", "temp"] hides elements containing "test" or "temp"
+    },
+    
+    // Filter based on assigned tags (useful when your tour content uses tags)
+    tagFiltering: {
+      mode: "none", // "none" (show all tags), "whitelist" (only show elements with specified tags), "blacklist" (hide elements with specified tags)
+      allowedTags: [""], // Tags to allow, e.g. ["important", "featured"] shows only elements with these tags
+      blacklistedTags: [""], // Tags to block, e.g. ["hidden", "internal"] hides elements with these tags
+    },
+    
+    // Filter based on EXACT full name matches (stricter than elementLabels)
+    uniqueNames: {
+      mode: "none", // "none" (show all), "whitelist" (only exact matches), "blacklist" (hide exact matches)
+      allowedNames: [""], // EXACT item names to allow, e.g. ["Lobby", "Room-101"] shows ONLY these exact items
+      blacklistedNames: [""], // EXACT item names to block, e.g. ["Hidden-Room"] hides ONLY these exact items
+    },
+  },
+  
+  // ==========================================
+  // ADVANCED TAB - Animation and Search Behavior
+  // ==========================================
+    // [10.12] Animation Settings
+    animations: {
+      enabled: false, // Enable animations globally
+      duration: {
+        fast: 150, // Fast animations (150ms)
+        normal: 250, // Normal animations (250ms)
+        slow: 400, // Slow animations (400ms)
+      },
+      easing: "ease-out", // Simple, natural easing
+      searchBar: {
+        openDuration: 300, // Quick, responsive opening
+        closeDuration: 200, // Even quicker closing
+        scaleEffect: true, // Subtle scale effect
+      },
+      results: {
+        fadeInDuration: 200, // Quick, clean fade-in
+        slideDistance: 8, // Subtle slide movement
+        staggerDelay: 30, // Quick succession between items
+      },
+      reducedMotion: {
+        respectPreference: true, // Respect user's reduced motion preference
+        fallbackDuration: 80, // Fast fallback for accessibility
+      },
+    },
+
+    // [10.13] Search Ranking & Behavior Settings
+    searchSettings: {
+      // Field weights (0.0 to 1.0) - Higher = More Important
+      fieldWeights: {
+        label: 1.0, // Main item name (highest priority)
+        businessName: 0.9, // Business data name
+        subtitle: 0.8, // Item descriptions
+        businessTag: 1.0, // Business tags
+        tags: 0.6, // Regular tags
+        parentLabel: 0.3, // Parent item name (lowest priority)
+      },
+
+      // Search behavior
+      behavior: {
+        threshold: 0.4, // 0.0 = exact match only, 1.0 = fuzzy match everything
+        distance: 40, // How many characters away a match can be
+        minMatchCharLength: 1, // Minimum characters needed to trigger search
+        useExtendedSearch: true, // Enable 'word syntax for exact matches
+        ignoreLocation: true, // Don't prioritize matches at start of text
+        includeScore: true, // Include relevance scores in results
+      },
+
+      // Boost values for different content types
+      boostValues: {
+        businessMatch: 2.0, // Items enhanced with business data
+        sheetsMatch: 2.5, // Items enhanced with Google Sheets data
+        labeledItem: 1.5, // Items with proper labels
+        unlabeledItem: 1.0, // Items without labels
+        childElement: 0.8, // Child elements like hotspots
+      },
+    },
+
+  // ==========================================
+  // DATA SOURCES TAB - External Data Integration
+  // ==========================================
+    // [10.14] Business Data Integration
+    businessData: {
+      useBusinessData: false, // *** true/false - Enable business data (DISABLES Google Sheets)
+      replaceTourData: false, // *** true/false - Replace tour labels with business labels
+      includeStandaloneEntries: false, // *** true/false - Add business entries without tour matches
+      businessDataFile: "business.json", // *** Business data filename
+      businessDataDir: "business-data", // *** Business data directory
+      matchField: "id", // *** Field to match against
+      businessDataUrl: `${window.location.origin}${window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/"))}/search-pro-non-mod/business-data/business.json`, // *** Business data URL
+    },
+    
+    // [10.15] Google Sheets Integration
+    // ==========================================
+    // GOOGLE SHEETS or LOCAL CSV INTEGRATION (you can use one or the other)
+    // ==========================================
+
+    /* 
+    📊 GOOGLE SHEETS INTEGRATION - How to Use Online CSV
+    
+    STEP 1: Create Your Google Sheet
+    ================================
+    1. Go to https://sheets.google.com and create a new spreadsheet
+    2. Set up your columns (first row should be headers):
+       - id: Unique identifier for each item
+       - tag: Tag/identifier to match with tour elements  
+       - name: Display name for the search result
+       - description: Optional description text
+       - imageUrl: Optional image URL for thumbnails
+       - elementType: Optional element type (Panorama, Hotspot, etc.)
+    
+    Example data:
+    | id    | tag        | name           | description              | imageUrl        |
+    |-------|------------|----------------|--------------------------|-----------------|
+    | rm001 | room-1     | Conference Rm  | Main meeting room        | http://img.jpg  |
+    | lb001 | lobby      | Main Lobby     | Building entrance        |                 |
+    
+    STEP 2: Make Your Sheet Public
+    ===============================
+    1. Click "Share" button (top right)
+    2. Click "Get link" 
+    3. Change access to "Anyone with the link can view"
+    4. Copy the share URL (looks like: https://docs.google.com/spreadsheets/d/SHEET_ID/edit...)
+    
+    STEP 3: Get the CSV Export URL
+    ===============================
+    Method A - Automatic (Recommended):
+    - Just paste your share URL in googleSheetUrl below
+    - The system will automatically convert it to CSV format
+    
+    Method B - Manual:
+    - Replace "/edit#gid=0" with "/export?format=csv" in your URL
+    - Final URL: https://docs.google.com/spreadsheets/d/SHEET_ID/export?format=csv
+    
+    STEP 4: Configure Below
+    =======================
+    - Set useGoogleSheetData: true
+    - Set useLocalCSV: false  
+    - Paste your URL in googleSheetUrl
+    - Set other options as needed
+    
+    ⚠️  IMPORTANT NOTES:
+    - Business Data and Google Sheets are MUTUALLY EXCLUSIVE
+    - Only enable ONE external data source at a time
+    - If both are enabled, Business Data takes priority
+    - Google Sheets data can enhance OR replace tour data
+    */
+    googleSheets: {
+      useGoogleSheetData: false, // *** true/false - Enable Google Sheets/CSV (DISABLES Business Data)
+      includeStandaloneEntries: false, // *** true/false - Include entries without tour matches
+      useAsDataSource: true, // *** true/false - Use as primary data source
+      fetchMode: "csv", // *** "csv" file 
+      // *** MUTUALLY EXCLUSIVE: Choose Online OR Local (not both) ***
+      // *** OPTION 1: Online Google Sheets URL (traditional method) ***
+      googleSheetUrl:
+        "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ9oy4JjwYAdTG1DKne9cu76PZCrZgtIOCX56sxVoBwRzys36mTqvFMvTE2TB-f-k5yZz_uWwW5Ou/pub?output=csv",
+
+      // OPTION 2B: Local CSV (useLocalCSV=true IGNORES googleSheetUrl)
+      useLocalCSV: false, // *** true/false - Local CSV mode (IGNORES googleSheetUrl)
+      localCSVFile: "search-data.csv", // *** Local CSV filename
+      localCSVDir: "business-data", // *** Directory containing CSV file
+      localCSVUrl: `${window.location.origin}${window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/"))}/search-pro-non-mod/business-data/search-data.csv`,
+
+      // *** CSV parsing options (for both online and local) ***
+      csvOptions: {
+        header: true, // *** true/false - First row contains headers
+        skipEmptyLines: true, // *** true/false - Skip empty lines
+        dynamicTyping: true, // *** true/false - Auto-convert data types
+      },
+
+      // *** Caching (only for online Google Sheets, local files are not cached) ***
+      caching: {
+        enabled: false, // *** true/false - Cache Google Sheets data
+        timeoutMinutes: 60, // *** Cache timeout in minutes
+        storageKey: "tourGoogleSheetsData", // *** Cache storage key
+      },
+    },
+  });
+
+  console.log(
+    "Thumbnail settings:",
+    window.searchFunctions.getConfig().thumbnailSettings,
+  );
+
+  // ==========================================
+  // END OF CONFIGURATION SETTINGS
+  // ==========================================
+
+      // [11.0] Debugging Function for Image Paths
+      function debugImagePaths() {
+        const config = window.searchFunctions.getConfig();
+        const baseUrl =
+          window.location.origin +
+          window.location.pathname.substring(
+            0,
+            window.location.pathname.lastIndexOf("/"),
+          );
+
+        console.log("Base URL:", baseUrl);
+        console.log("Default Images Configuration:");
+
+        Object.entries(config.thumbnailSettings.defaultImages).forEach(
+          ([type, path]) => {
+            const normalizedPath = path.replace(/^\.\//, "");
+            const fullPath = `${baseUrl}/${normalizedPath}`;
+
+            console.log(`${type}:`, {
+              configPath: path,
+              normalizedPath,
+              fullPath,
+            });
+
+            // Test if the image actually exists
+            fetch(fullPath, { method: "HEAD" })
+              .then((response) => {
+                console.log(
+                  `${type} image exists: ${response.ok ? "YES" : "NO"} (${response.status})`,
+                );
+              })
+              .catch((error) => {
+                console.error(`${type} image fetch error:`, error);
+              });
+          },
+        );
+      }
+      // [11.1] Add Debug Logging to Verify Google Sheets Configuration
+      Logger.debug(
+        "[DEBUG] Google Sheets Config Applied:",
+        window.searchFunctions.getConfig().googleSheets,
+      );
+
+      // [11.2] Force reinitialization if tour is available
       if (window.tourInstance) {
-        console.log(
-          "[BUSINESS DATA] Reinitializing search with updated config",
+        Logger.info(
+          "[GOOGLE SHEETS] Reinitializing search with updated config",
         );
         window.searchFunctions.initializeSearch(window.tourInstance);
       }
     }
+
+    function validateConfig(config) {
+  // Check if config is an object
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return false;
+  }
+  // Optionally, check for at least one expected property
+  if (
+    !(
+      config.display ||
+      config.includeContent ||
+      config.filter ||
+      config.useAsLabel ||
+      config.appearance ||
+      config.searchBar ||
+      config.thumbnailSettings ||
+      config.displayLabels ||
+      config.businessData ||
+      config.googleSheets ||
+      config.animations
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+    // [11.3] Check for live configuration updates from control panel - External File
+    function checkForLiveConfig() {
+      try {
+        const liveConfig = localStorage.getItem("searchProLiveConfig");
+        if (liveConfig) {
+          const config = JSON.parse(liveConfig);
+          if (window.searchFunctions && window.searchFunctions.updateConfig) {
+            window.searchFunctions.updateConfig(config);
+            console.log(
+              "[Search Plugin] Applied live configuration from control panel",
+            );
+
+            // Clear the live config to prevent repeated applications
+            localStorage.removeItem("searchProLiveConfig");
+
+            // Show notification
+            showConfigUpdateNotification();
+          }
+        }
+      } catch (error) {
+        console.error(
+          "[Search Plugin] Failed to apply live configuration:",
+          error,
+        );
+      }
+    }
+
+    function showConfigUpdateNotification() {
+      const notification = document.createElement("div");
+      notification.className = "config-notification";
+
+      // Create checkmark icon
+      const checkmark = document.createElement("div");
+      checkmark.className = "config-notification-checkmark";
+      checkmark.innerHTML = `
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+        <path d="M20 6L9 17l-5-5"/>
+    </svg>
+  `;
+
+      notification.appendChild(checkmark);
+      notification.appendChild(
+        document.createTextNode("Search settings updated from control panel"),
+      );
+
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        notification.classList.add("fadeout");
+        setTimeout(() => {
+          notification.remove();
+        }, 400);
+      }, 3000);
+    }
+
+    // Check for live config every 2 seconds
+    setInterval(checkForLiveConfig, 2000);
   }, 100);
 });
